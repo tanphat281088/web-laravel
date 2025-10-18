@@ -1,0 +1,64 @@
+<?php
+
+namespace {{ namespace }};
+
+use Maatwebsite\Excel\Concerns\FromCollection;
+use Maatwebsite\Excel\Concerns\WithHeadings;
+use Maatwebsite\Excel\Concerns\WithMapping;
+use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use Maatwebsite\Excel\Concerns\WithStyles;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
+
+class {{ class }} implements FromCollection, WithHeadings, WithMapping, ShouldAutoSize, WithStyles
+{
+    /**
+     * @return \Illuminate\Support\Collection
+     */
+    public function collection()
+    {
+        // Trả về collection dữ liệu cần xuất
+        return \App\Models\TenModel::all();
+    }
+
+    /**
+     * @return array
+     */
+    public function headings(): array
+    {
+        // Trả về mảng các tiêu đề cột
+        return [
+            'Cột 1',
+            'Cột 2',
+            'Cột 3',
+        ];
+    }
+
+    /**
+     * @param mixed $row
+     * @return array
+     */
+    public function map($row): array
+    {
+        // Định dạng dữ liệu cho mỗi dòng
+        return [
+            $row->truong_1,
+            $row->truong_2,
+            $row->truong_3,
+        ];
+    }
+
+    /**
+     * @param Worksheet $sheet
+     */
+    public function styles(Worksheet $sheet)
+    {
+        // Định dạng style cho worksheet
+        return [
+            // Style cho hàng đầu tiên (tiêu đề)
+            1 => [
+                'font' => ['bold' => true],
+                'alignment' => ['horizontal' => 'center'],
+            ],
+        ];
+    }
+} 

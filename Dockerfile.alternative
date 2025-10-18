@@ -1,0 +1,17 @@
+FROM laravelsail/php82-composer:latest
+
+WORKDIR /var/www/html
+
+COPY . .
+
+ENV COMPOSER_ALLOW_SUPERUSER=1
+
+RUN composer install --no-interaction --optimize-autoloader --ignore-platform-reqs
+
+RUN chmod -R 775 storage bootstrap/cache
+
+RUN php artisan storage:link || true
+
+EXPOSE 8000
+
+CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"] 

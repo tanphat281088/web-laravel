@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: laravel-ims
+    runtime: docker
+    plan: free
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: false
+      - key: APP_KEY
+        fromEnvVar: APP_KEY
+      - key: DB_CONNECTION
+        value: mysql
+      - key: DB_HOST
+        fromEnvVar: DB_HOST
+      - key: DB_PORT
+        fromEnvVar: DB_PORT
+      - key: DB_DATABASE
+        fromEnvVar: DB_DATABASE
+      - key: DB_USERNAME
+        fromEnvVar: DB_USERNAME
+      - key: DB_PASSWORD
+        fromEnvVar: DB_PASSWORD
