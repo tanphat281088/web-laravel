@@ -1,15 +1,40 @@
 <?php
 
 use App\Class\CustomResponse;
-use App\Http\Controllers\api\AuthController;
-use App\Http\Controllers\api\CauHinhChungController;
-use App\Http\Controllers\api\LichSuImportController;
-use App\Http\Controllers\api\ThoiGianLamViecController;
-use App\Http\Controllers\api\UploadController;
-use App\Http\Controllers\api\VaiTroController;
+use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CauHinhChungController;
+use App\Http\Controllers\Api\LichSuImportController;
+use App\Http\Controllers\Api\ThoiGianLamViecController;
+use App\Http\Controllers\Api\UploadController;
+use App\Http\Controllers\Api\VaiTroController;
 use App\Http\Controllers\Api\DashboardController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\DB; // MỚI: dùng cho route loai-san-pham/options
+use App\Modules\KhachHangVangLai\KhachHangVangLaiController; // MỚI: controller KH vãng lai
+use App\Modules\SanPham\SanPhamController; // ĐƯA LÊN ĐẦU FILE: tránh lỗi PHP use giữa file
+use App\Modules\ThuChi\BaoCaoThuChiController; // ĐƯA LÊN ĐẦU FILE: tránh lỗi PHP use giữa file
+use App\Modules\GiaoHang\GiaoHangController; // MỚI: controller Quản lý giao hàng
+use App\Modules\NhanSu\ChamCongController;
+use App\Modules\NhanSu\ChamCongCheckoutController;
+use App\Modules\NhanSu\ChamCongMeController;
+use App\Modules\NhanSu\ChamCongAdminController;
+use App\Modules\NhanSu\DonTuController;
+use App\Modules\NhanSu\BangCongController;
+use App\Modules\NhanSu\BangCongAdminOpsController;
+use App\Modules\NhanSu\HolidayController;
+use App\Http\Controllers\Api\ExpenseCategoryController;
+use App\Http\Controllers\Api\BaoCaoQuanTriController;
+use App\Http\Controllers\SignMakerController;
+use App\Modules\CSKH\MemberPointController; // CSKH → Điểm thành viên
+// +++ CSKH · Điểm thành viên — Resync +++
+use App\Modules\CSKH\MemberPointMaintenanceController;
+
+Route::prefix('cskh/points')->group(function () {
+    Route::post('/resync', [MemberPointMaintenanceController::class, 'resync']); // rà soát & đồng bộ theo delta
+    Route::post('/resync-by-order/{id}', [MemberPointMaintenanceController::class, 'resyncByOrder']); // đồng bộ 1 đơn (tùy chọn)
+});
+
+
 
 // Auth
 Route::post('/auth/login', [AuthController::class, 'login'])->name('login');
@@ -27,11 +52,12 @@ Route::prefix('dashboard')->group(function () {
     Route::get('/activities', [DashboardController::class, 'getRecentActivities']);
 });
 
-use App\Modules\SanPham\SanPhamController; // đảm bảo có use ở đầu file
-
 // 👉 PUBLIC: combobox tìm sản phẩm theo mã/tên (không cần token)
 Route::get('san-pham/options', [SanPhamController::class, 'getOptions']);
 
+Route::get('expense-categories/parents', [ExpenseCategoryController::class, 'parents']);
+Route::get('expense-categories/options', [ExpenseCategoryController::class, 'options']);
+Route::get('expense-categories/tree',    [ExpenseCategoryController::class, 'tree']);
 
 Route::group([
   'middleware' => ['jwt', 'permission'],
@@ -63,7 +89,6 @@ Route::group([
       'data'    => $rows,
     ]);
   });
-  // ===============================================================================
 
   // Vai trò
   Route::prefix('vai-tro')->group(function () {
@@ -124,6 +149,12 @@ Route::group([
     Route::post('/import-excel', [\App\Modules\KhachHang\KhachHangController::class, 'importExcel']);
   });
 
+  // ====== MỚI: Khách hàng vãng lai ======
+  Route::prefix('khach-hang-vang-lai')->group(function () {
+    Route::get('/', [KhachHangVangLaiController::class, 'index']);
+    Route::post('/convert', [KhachHangVangLaiController::class, 'convert']);
+  });
+
   // NhaCungCap
   Route::prefix('nha-cung-cap')->group(function () {
     Route::get('/', [\App\Modules\NhaCungCap\NhaCungCapController::class, 'index']);
@@ -164,7 +195,6 @@ Route::group([
   // SanPham
   Route::prefix('san-pham')->group(function () {
     Route::get('/', [\App\Modules\SanPham\SanPhamController::class, 'index']);
-    
     Route::get('/options-by-nha-cung-cap/{nhaCungCapId}', [\App\Modules\SanPham\SanPhamController::class, 'getOptionsByNhaCungCap']);
     Route::get('/options-lo-san-pham-by-san-pham/{sanPhamId}/{donViTinhId}', [\App\Modules\SanPham\SanPhamController::class, 'getOptionsLoSanPhamBySanPhamIdAndDonViTinhId']);
     Route::get('/download-template-excel', [\App\Modules\SanPham\SanPhamController::class, 'downloadTemplateExcelWithRelations']);
@@ -243,6 +273,63 @@ Route::group([
     Route::post('/import-excel', [\App\Modules\QuanLyBanHang\QuanLyBanHangController::class, 'importExcel']);
   });
 
+  // ===== Báo cáo quản trị =====
+  Route::prefix('bao-cao-quan-tri')->group(function () {
+      Route::get('/kqkd',        [BaoCaoQuanTriController::class, 'kqkd']);
+      Route::get('/kqkd-detail', [BaoCaoQuanTriController::class, 'kqkdDetail']);  // nếu bạn đã thêm method detail
+      Route::get('/kqkd-export', [BaoCaoQuanTriController::class, 'kqkdExport']);  // nếu bạn đã thêm export
+  });
+
+  // ================== Quản lý giao hàng ==================
+  // 3 tab: Đơn hôm nay, Lịch giao hôm nay, Lịch giao tổng
+  Route::prefix('giao-hang')->group(function () {
+      // Danh sách đơn có lịch giao TRONG NGÀY HÔM NAY (bảng "Đơn hôm nay")
+      Route::get('/hom-nay', [GiaoHangController::class, 'donHomNay']);
+
+      // Lịch giao hôm nay dạng nhóm theo khung giờ (timeline)
+      Route::get('/lich-hom-nay', [GiaoHangController::class, 'lichGiaoHomNay']);
+
+      // Lịch giao tổng (calendar) với filter from/to/status
+      // Ví dụ: /api/giao-hang/lich-tong?from=2025-10-21&to=2025-10-28&status=0
+      Route::get('/lich-tong', [GiaoHangController::class, 'lichGiaoTong']);
+
+      // Cập nhật trạng thái đơn hàng: 0=Chưa giao, 1=Đã giao, 2=Đã hủy
+      Route::patch('/{id}/trang-thai', [GiaoHangController::class, 'capNhatTrangThai']);
+      // Gửi SMS (1 lần/mốc) + đổi trạng thái (luôn đổi, dù SMS lỗi vẫn cảnh báo)
+      Route::post('/{id}/notify-and-set-status', [GiaoHangController::class, 'notifyAndSetStatus']);
+
+  });
+  // =======================================================
+
+  // ================== CSKH → Điểm thành viên ==================
+  Route::prefix('cskh')->group(function () {
+      Route::prefix('points')->group(function () {
+          // Danh sách biến động toàn hệ thống (filter & phân trang)
+          Route::get('/events', [MemberPointController::class, 'index']);
+
+          // Lịch sử biến động của 1 khách
+          Route::get('/customers/{khachHangId}/events', [MemberPointController::class, 'byCustomer'])
+               ->whereNumber('khachHangId');
+
+          // Gửi ZNS 1 lần cho một "biến động điểm"
+          Route::post('/events/{eventId}/send-zns', [MemberPointController::class, 'sendZns'])
+               ->whereNumber('eventId');
+      });
+  });
+  // ============================================================
+  // ================== CSKH → Điểm thành viên (ALIAS cho permission) ==================
+  // Mục đích: để middleware permission match module 'cskh-points' (có action index)
+  Route::prefix('cskh-points')->group(function () {
+      Route::get('/events', [MemberPointController::class, 'index']);
+      Route::get('/customers/{khachHangId}/events', [MemberPointController::class, 'byCustomer'])
+           ->whereNumber('khachHangId');
+      Route::post('/events/{eventId}/send-zns', [MemberPointController::class, 'sendZns'])
+           ->whereNumber('eventId');
+  });
+  // ====================================================================================
+
+
+
   // PhieuXuatKho
   Route::prefix('phieu-xuat-kho')->group(function () {
     Route::get('/', [\App\Modules\PhieuXuatKho\PhieuXuatKhoController::class, 'index']);
@@ -259,6 +346,8 @@ Route::group([
   Route::prefix('phieu-thu')->group(function () {
     Route::get('/', [\App\Modules\PhieuThu\PhieuThuController::class, 'index']);
     Route::get('/options', [\App\Modules\PhieuThu\PhieuThuController::class, 'getOptions']);
+    // MỚI: danh sách LOẠI phiếu thu (bổ sung TAI_CHINH)
+    Route::get('/loai-options', [\App\Modules\PhieuThu\PhieuThuController::class, 'loaiOptions']); // <-- thêm route này
     Route::get('/download-template-excel', [\App\Modules\PhieuThu\PhieuThuController::class, 'downloadTemplateExcel']);
     Route::post('/', [\App\Modules\PhieuThu\PhieuThuController::class, 'store']);
     Route::get('/{id}', [\App\Modules\PhieuThu\PhieuThuController::class, 'show']);
@@ -292,4 +381,62 @@ Route::group([
     Route::delete('/{id}', [\App\Modules\SanXuat\SanXuatController::class, 'destroy']);
     Route::post('/import-excel', [\App\Modules\SanXuat\SanXuatController::class, 'importExcel']);
   });
+
+  // ===== Alias cho FE: /attendance/* → dùng chung controller Nhân Sự (KHÔNG thay thế route cũ)
+  Route::post('/attendance/checkin',  [ChamCongController::class,         'checkin']);
+  Route::post('/attendance/checkout', [ChamCongCheckoutController::class, 'checkout']);
+  Route::get ('/attendance/my',       [ChamCongMeController::class,       'index']);
+  Route::get ('/attendance/admin',    [ChamCongAdminController::class,    'index']);
 });
+
+// ...
+
+Route::get('thu-chi/bao-cao/tong-hop', [BaoCaoThuChiController::class, 'tongHop']);
+
+Route::prefix('sign-maker')->middleware([])->group(function () {
+    Route::get('/templates', [SignMakerController::class, 'templates']);
+    Route::post('/preview',  [SignMakerController::class, 'preview']);
+    Route::post('/export-pdf', [SignMakerController::class, 'exportPdf']);
+    Route::get('/download/{path}', [SignMakerController::class, 'download'])
+         ->where('path', '.*')
+         ->name('sign-maker.download');
+});
+
+Route::middleware(['jwt', 'permission'])
+    ->prefix('nhan-su')
+    ->name('nhan-su.')
+    ->group(function () {
+        // ===== Chấm công =====
+        Route::post('cham-cong/checkin',  [ChamCongController::class,         'checkin'])->name('cham-cong.checkin');
+        Route::post('cham-cong/checkout', [ChamCongCheckoutController::class, 'checkout'])->name('cham-cong.checkout');
+        Route::get ('cham-cong/me',       [ChamCongMeController::class,       'index'])->name('cham-cong.me');
+        Route::get ('cham-cong',          [ChamCongAdminController::class,    'index'])->name('cham-cong.index');
+
+        // ===== Đơn từ (xin nghỉ phép) =====
+        Route::prefix('don-tu')->group(function () {
+            Route::post('/',              [DonTuController::class, 'store'])->name('don-tu.store');
+            Route::get('/my',             [DonTuController::class, 'myIndex'])->name('don-tu.my');
+            Route::get('/',               [DonTuController::class, 'adminIndex'])->name('don-tu.index');
+            Route::patch('/{id}/approve', [DonTuController::class, 'approve'])->name('don-tu.approve');
+            Route::patch('/{id}/reject',  [DonTuController::class, 'reject'])->name('don-tu.reject');
+            Route::patch('/{id}/cancel',  [DonTuController::class, 'cancel'])->name('don-tu.cancel');
+        });
+
+        // ===== Bảng công tháng =====
+        Route::prefix('bang-cong')->group(function () {
+            Route::get('/my',            [BangCongController::class,        'myIndex'])->name('bang-cong.my');
+            Route::get('/',              [BangCongController::class,        'adminIndex'])->name('bang-cong.index');
+            Route::post('/recompute',    [BangCongController::class,        'recompute'])->name('bang-cong.recompute');
+            Route::patch('/lock',        [BangCongAdminOpsController::class,'lock'])->name('bang-cong.lock');
+            Route::patch('/unlock',      [BangCongAdminOpsController::class,'unlock'])->name('bang-cong.unlock');
+            Route::post('/recompute-all',[BangCongAdminOpsController::class,'recomputeAll'])->name('bang-cong.recompute_all');
+        });
+
+        // ===== Ngày lễ (Holiday) =====
+        Route::prefix('holiday')->group(function () {
+            Route::get('/',       [HolidayController::class, 'index'])->name('holiday.index');     // nhan-su.index | list
+            Route::post('/',      [HolidayController::class, 'store'])->name('holiday.store');     // nhan-su.create | store
+            Route::patch('/{id}', [HolidayController::class, 'update'])->name('holiday.update');   // nhan-su.update
+            Route::delete('/{id}',[HolidayController::class, 'destroy'])->name('holiday.destroy'); // nhan-su.delete
+        });
+    });

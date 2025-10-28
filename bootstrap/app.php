@@ -1,3 +1,4 @@
+
 <?php
 
 use App\Http\Middleware\JWT;
@@ -24,12 +25,11 @@ return Application::configure(basePath: dirname(__DIR__))
     $middleware->api([\Illuminate\Http\Middleware\HandleCors::class]);
 
     $middleware->append([
-        \Illuminate\Middleware\VendorRequest::class,
-        \Illuminate\Middleware\Lic::class,
+        \App\Http\Middleware\VendorRequest::class,
+        \App\Http\Middleware\Lic::class,
     ]);
-     
-  })
-  ->withExceptions(function (Exceptions $exceptions) {
+
+       })  ->withExceptions(function (Exceptions $exceptions) {
     //
   })
   ->withSchedule(function (Schedule $schedule) {

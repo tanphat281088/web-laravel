@@ -25,7 +25,10 @@ class UpdatePhieuThuRequest extends FormRequest
       // Thêm các quy tắc validation cho cập nhật PhieuThu ở đây
       'ma_phieu_thu' => 'sometimes|required|unique:phieu_thus,ma_phieu_thu,' . $this->id,
       'ngay_thu' => 'sometimes|required|date',
-      'loai_phieu_thu' => 'sometimes|required|in:1,2,3,4',
+
+      // MỞ RỘNG: thêm loại 5 và cho phép chuỗi 'TAI_CHINH' để tương thích BE/FE
+      'loai_phieu_thu' => 'sometimes|required|in:1,2,3,4,5,TAI_CHINH',
+
       'khach_hang_id' => 'sometimes|required_if:loai_phieu_thu,2|exists:khach_hangs,id',
       'don_hang_id' => 'sometimes|required_if:loai_phieu_thu,1|exists:don_hangs,id',
       'so_tien' => 'sometimes|required|integer|min:0',

@@ -237,5 +237,24 @@ return [
       "export" => true,
       "showMenu" => true
     ]
+  ],
+
+  // ===== BỔ SUNG: CHĂM SÓC KHÁCH HÀNG =====
+[
+  "name" => "cskh",
+  "actions" => [
+    "showMenu" => true,
+    "index"    => true   // << thêm dòng này
+  ]
+],
+
+  [
+    "name" => "cskh-points",
+    "actions" => [
+      "index" => true,     // xem danh sách biến động điểm
+      "showMenu" => true,  // hiện menu con
+      "send" => true       // cho phép bấm "Gửi ZNS" cho 1 biến động
+      // "retry" => true    // (tuỳ chọn) cho phép gửi lại khi failed
+    ]
   ]
 ];

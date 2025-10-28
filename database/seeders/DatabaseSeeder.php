@@ -99,5 +99,8 @@ class DatabaseSeeder extends Seeder
         'nguoi_cap_nhat' => $user->id,
       ]);
     }
+
+    // ====== THÊM DÒNG NÀY (GỌI SEEDER DANH MỤC CHI) ======
+    $this->call(ExpenseCategorySeeder::class);
   }
 }

@@ -12,6 +12,9 @@ use Maatwebsite\Excel\Facades\Excel;
 use App\Imports\QuanLyBanHangImport;
 use Illuminate\Support\Str;
 
+// 🔽 BỔ SUNG: gọi service ghi nhận biến động điểm khi đơn đã thanh toán
+use App\Services\MemberPointService;
+
 class QuanLyBanHangController extends Controller
 {
   protected $quanLyBanHangService;
@@ -50,17 +53,17 @@ class QuanLyBanHangController extends Controller
    */
   public function getGiaBanSanPham(Request $request)
   {
-    // ✅ THAY ĐỔI DUY NHẤT: validate & nhận thêm loai_gia
+    // ✅ validate & nhận thêm loai_gia
     $validated = $request->validate([
       'san_pham_id'    => 'required|integer|exists:san_phams,id',
       'don_vi_tinh_id' => 'required|integer',
-      'loai_gia'       => 'required|integer|in:1,2', // 1=Đặt ngay, 2=Đặt trước 3 ngày
+      'loai_gia'       => 'required|integer|in:1,2',
     ]);
 
     $result = $this->quanLyBanHangService->getGiaBanSanPham(
       (int) $validated['san_pham_id'],
       (int) $validated['don_vi_tinh_id'],
-      (int) $validated['loai_gia'] // ✅ TRUYỀN XUỐNG SERVICE
+      (int) $validated['loai_gia']
     );
 
     if ($result instanceof \Illuminate\Http\JsonResponse) {
@@ -72,16 +75,26 @@ class QuanLyBanHangController extends Controller
 
   /**
    * Tạo mới QuanLyBanHang
+   * - KHÔNG nhận ma_don_hang từ request (BE tự sinh theo id)
    */
   public function store(CreateQuanLyBanHangRequest $request)
   {
-    $result = $this->quanLyBanHangService->create($request->validated());
+    // 🔒 Phòng thủ: loại bỏ ma_don_hang nếu FE gửi lên
+    $payload = $request->validated();
+    unset($payload['ma_don_hang']);
 
-    if ($result instanceof \Illuminate\Http\JsonResponse) {
-      return $result;
-    }
+$result = $this->quanLyBanHangService->create($payload);
 
-    return CustomResponse::success($result, 'Tạo mới thành công');
+if ($result instanceof \Illuminate\Http\JsonResponse) {
+  return $result;
+}
+
+// 🔽 Gọi ghi điểm (an toàn & idempotent)
+$this->tryRecordPaidEvent((int) $result->id);
+
+// Service đã return ->refresh() nên đảm bảo có ma_don_hang trong response
+return CustomResponse::success($result, 'Tạo mới thành công');
+
   }
 
   /**
@@ -100,14 +113,28 @@ class QuanLyBanHangController extends Controller
 
   /**
    * Cập nhật QuanLyBanHang
+   * ➕ (BỔ SUNG HOOK AN TOÀN)
+   * Sau khi update thành công, gọi MemberPointService để ghi nhận "biến động điểm"
+   * nếu và chỉ nếu đơn đã ở trạng thái "đã thanh toán". Service sẽ tự kiểm tra:
+   * - trạng thái thanh toán hiện tại của đơn (không phải ở FE),
+   * - idempotency theo don_hang_id (1 đơn chỉ tạo 1 biến động),
+   * - tính doanh thu, quy đổi điểm (1 điểm = 1.000 VND),
+   * - không gửi ZNS ở đây (để anh chủ động gửi trong UI).
    */
   public function update(UpdateQuanLyBanHangRequest $request, $id)
   {
-    $result = $this->quanLyBanHangService->update($id, $request->validated());
+    // 🔒 phòng thủ tương tự (tránh sửa mã)
+    $payload = $request->validated();
+    unset($payload['ma_don_hang']);
+
+    $result = $this->quanLyBanHangService->update($id, $payload);
 
     if ($result instanceof \Illuminate\Http\JsonResponse) {
       return $result;
     }
+
+    // 🔽 HOOK MỀM: an toàn, không phá flow cũ, không throw lỗi ra ngoài.
+    $this->tryRecordPaidEvent((int) $id);
 
     return CustomResponse::success($result, 'Cập nhật thành công');
   }
@@ -233,5 +260,26 @@ class QuanLyBanHangController extends Controller
     }
 
     return $result; // Trả về view HTML
+  }
+
+  // ==========================
+  // 🔽 PRIVATE HELPER BỔ SUNG
+  // ==========================
+  /**
+   * Gọi service ghi nhận "biến động điểm" khi đơn đã thanh toán.
+   * - Service tự kiểm tra trạng thái hiện tại của đơn trong DB.
+   * - Tự idempotent theo don_hang_id (1 đơn 1 biến động).
+   * - Không ném lỗi ra ngoài để không ảnh hưởng flow cập nhật đơn.
+   */
+  private function tryRecordPaidEvent(int $donHangId): void
+  {
+    try {
+      /** @var \App\Services\MemberPointService $svc */
+      $svc = app(MemberPointService::class);
+      $svc->recordPaidOrder($donHangId);
+    } catch (\Throwable $e) {
+      // log lỗi nội bộ, không phá vỡ response cho FE
+      report($e);
+    }
   }
 }

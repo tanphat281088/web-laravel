@@ -48,12 +48,17 @@ class PhieuChiService
     /**
      * Lấy dữ liệu theo ID
      */
-    public function getById($id)
-    {
-        $phieuChi = PhieuChi::find($id);
+public function getById($id)
+{
+    // LẤY KÈM QUAN HỆ DANH MỤC (CHA)
+    $phieuChi = PhieuChi::with(['category.parent'])->find($id);
 
-        if ($phieuChi->loai_phieu_chi == 2 || $phieuChi->loai_phieu_chi == 4) {
-            $query = "
+    if (! $phieuChi) {
+        return CustomResponse::error('Dữ liệu không tồn tại');
+    }
+
+    if ($phieuChi->loai_phieu_chi == 2 || $phieuChi->loai_phieu_chi == 4) {
+        $query = "
       SELECT
         phieu_nhap_khos.ma_phieu_nhap_kho,
         phieu_nhap_khos.tong_tien - COALESCE((SELECT SUM(so_tien) FROM chi_tiet_phieu_chis WHERE phieu_nhap_kho_id = phieu_nhap_khos.id AND phieu_chi_id < $id), 0) as tong_tien_can_thanh_toan,
@@ -64,17 +69,18 @@ class PhieuChiService
       LEFT JOIN phieu_nhap_khos ON chi_tiet_phieu_chis.phieu_nhap_kho_id = phieu_nhap_khos.id
       WHERE phieu_chis.id = $id";
 
-            $data = DB::select($query);
-
-            $phieuChi->chi_tiet_phieu_chi = $data;
-        }
-
-        if (! $phieuChi) {
-            return CustomResponse::error('Dữ liệu không tồn tại');
-        }
-
-        return $phieuChi;
+        $data = DB::select($query);
+        $phieuChi->chi_tiet_phieu_chi = $data;
     }
+
+    // TIỆN LỢI: export thêm parent_code cho FE nếu cần
+    if ($phieuChi->relationLoaded('category') && $phieuChi->category && $phieuChi->category->parent) {
+        $phieuChi->category_parent_code = $phieuChi->category->parent->code;
+    }
+
+    return $phieuChi;
+}
+
 
     /**
      * Tạo mới dữ liệu

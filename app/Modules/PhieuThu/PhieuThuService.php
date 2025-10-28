@@ -16,32 +16,68 @@ class PhieuThuService
     /**
      * Lấy tất cả dữ liệu
      */
+    /**
+     * Lấy tất cả dữ liệu
+     */
+    /**
+     * Lấy tất cả dữ liệu
+     */
+    /**
+     * Lấy tất cả dữ liệu
+     */
     public function getAll(array $params = [])
     {
         try {
-            // Tạo query cơ bản
-            $query = PhieuThu::query()->with('images');
+            // JOIN don_hangs qua derived-table để tránh cột 'nguoi_tao' bị trùng
+            $dhSub = DB::raw('(SELECT id, ma_don_hang, ten_khach_hang, so_dien_thoai FROM don_hangs) as dh');
 
-            // Sử dụng FilterWithPagination để xử lý filter và pagination
+            $query = PhieuThu::query()
+                ->leftJoin($dhSub, 'dh.id', '=', 'phieu_thus.don_hang_id')
+                ->with('images');
+
+            // Để FilterWithPagination hoạt động, liệt kê rõ các cột cần lấy
             $result = FilterWithPagination::findWithPagination(
                 $query,
                 $params,
-                ['phieu_thus.*'] // Columns cần select
+                [
+                    'phieu_thus.*',
+                    'dh.ma_don_hang',
+                    'dh.ten_khach_hang',
+                    'dh.so_dien_thoai',
+                ]
             );
 
+            // Tạo chuỗi mô tả ở PHP (tránh alias SQL gây lỗi)
+            $collection = $result['collection'];
+            foreach ($collection as $item) {
+                $loaiText = match ((int)($item->loai_phieu_thu ?? 0)) {
+                    1 => 'Thu cho đơn hàng',
+                    2 => 'Thu cho nhiều đơn hàng theo khách hàng',
+                    3 => 'Thu công nợ khách hàng',
+                    5 => 'Thu hoạt động tài chính', // MỚI: loại 5
+                    default => 'Thu khác',
+                };
+
+                $maDonHang   = $item->ma_don_hang ?? 'N/A';
+                $tenKhach    = $item->ten_khach_hang ?? 'N/A';
+                $soDienThoai = $item->so_dien_thoai ?? 'N/A';
+
+                $item->mo_ta_phieu_thu = "{$loaiText} - {$maDonHang} - {$tenKhach} - {$soDienThoai}";
+            }
+
             return [
-                'data' => $result['collection'],
+                'data' => $collection,
                 'total' => $result['total'],
                 'pagination' => [
-                    'current_page' => $result['current_page'],
-                    'last_page' => $result['last_page'],
-                    'from' => $result['from'],
-                    'to' => $result['to'],
+                    'current_page'  => $result['current_page'],
+                    'last_page'     => $result['last_page'],
+                    'from'          => $result['from'],
+                    'to'            => $result['to'],
                     'total_current' => $result['total_current'],
                 ],
             ];
         } catch (Exception $e) {
-            throw new Exception('Lỗi khi lấy danh sách: '.$e->getMessage());
+            throw new Exception('Lỗi khi lấy danh sách: ' . $e->getMessage());
         }
     }
 
@@ -52,24 +88,24 @@ class PhieuThuService
     {
         $phieuThu = PhieuThu::find($id);
 
-        if ($phieuThu->loai_phieu_thu == 2 || $phieuThu->loai_phieu_thu == 3) {
-            $query = "
-      SELECT
-        don_hangs.ma_don_hang,
-        don_hangs.tong_tien_can_thanh_toan,
-        chi_tiet_phieu_thus.so_tien as so_tien_da_thanh_toan
-      FROM phieu_thus
-      LEFT JOIN chi_tiet_phieu_thus ON phieu_thus.id = chi_tiet_phieu_thus.phieu_thu_id
-      LEFT JOIN don_hangs ON chi_tiet_phieu_thus.don_hang_id = don_hangs.id
-      WHERE phieu_thus.id = $id";
-
-            $data = DB::select($query);
-
-            $phieuThu->chi_tiet_phieu_thu = $data;
+        if (!$phieuThu) {
+            return CustomResponse::error('Dữ liệu không tồn tại');
         }
 
-        if (! $phieuThu) {
-            return CustomResponse::error('Dữ liệu không tồn tại');
+        if ($phieuThu->loai_phieu_thu == 2 || $phieuThu->loai_phieu_thu == 3) {
+            $query = "
+                SELECT
+                  don_hangs.ma_don_hang,
+                  don_hangs.tong_tien_can_thanh_toan,
+                  chi_tiet_phieu_thus.so_tien as so_tien_da_thanh_toan
+                FROM phieu_thus
+                LEFT JOIN chi_tiet_phieu_thus ON phieu_thus.id = chi_tiet_phieu_thus.phieu_thu_id
+                LEFT JOIN don_hangs ON chi_tiet_phieu_thus.don_hang_id = don_hangs.id
+                WHERE phieu_thus.id = $id
+            ";
+
+            $data = DB::select($query);
+            $phieuThu->chi_tiet_phieu_thu = $data;
         }
 
         return $phieuThu;
@@ -83,17 +119,22 @@ class PhieuThuService
         try {
             DB::beginTransaction();
 
+            // MỚI: chuẩn hoá loại để chấp nhận cả chuỗi 'TAI_CHINH'
+            if (isset($data['loai_phieu_thu'])) {
+                $data['loai_phieu_thu'] = $this->normalizeLoai($data['loai_phieu_thu']);
+            }
+
             $result = match ($data['loai_phieu_thu']) {
                 1 => $this->xuLyThanhToanDonHang($data),
                 2 => $this->xuLyThanhToanNhieuDonHang($data),
                 3 => $this->xuLyThanhToanCongNoKhachHang($data),
                 4 => $this->xuLyThuKhac($data),
+                5 => $this->xuLyThuTaiChinh($data), // MỚI: loại tài chính
                 default => throw new Exception('Loại phiếu thu không hợp lệ')
             };
 
             if ($result instanceof \App\Class\CustomResponse) {
                 DB::rollBack();
-
                 return $result;
             }
 
@@ -134,6 +175,7 @@ class PhieuThuService
                 2 => $this->xuLyXoaPhieuThuNhieuDonHang($model),
                 3 => $this->xuLyXoaPhieuThuCongNoKhachHang($model),
                 4 => $this->xuLyXoaThuKhac($model),
+                5 => $this->xuLyXoaThuTaiChinh($model), // MỚI
                 default => throw new Exception('Loại phiếu thu không hợp lệ')
             };
 
@@ -241,6 +283,15 @@ class PhieuThuService
     }
 
     /**
+     * MỚI: Xử lý thu hoạt động tài chính (loại 5)
+     */
+    private function xuLyThuTaiChinh(array $data)
+    {
+        // Không gắn đơn/khách — chỉ tạo bản ghi
+        return PhieuThu::create($data);
+    }
+
+    /**
      * Xử lý xóa phiếu thu đơn hàng
      */
     private function xuLyXoaPhieuThuDonHang($model)
@@ -278,6 +329,15 @@ class PhieuThuService
      */
     private function xuLyXoaThuKhac($model)
     {
+        return true;
+    }
+
+    /**
+     * MỚI: Xử lý xóa thu hoạt động tài chính (loại 5)
+     */
+    private function xuLyXoaThuTaiChinh($model)
+    {
+        // Không cần hoàn/điều chỉnh đơn hàng
         return true;
     }
 
@@ -448,5 +508,24 @@ class PhieuThuService
     private function xoaChiTietPhieuThu($phieuThuId)
     {
         ChiTietPhieuThu::where('phieu_thu_id', $phieuThuId)->delete();
+    }
+
+    /**
+     * MỚI: Chuẩn hoá "loại" nhận từ FE/BE
+     * - Cho phép 'TAI_CHINH' -> 5
+     * - Nếu là chuỗi số -> ép về số
+     */
+    private function normalizeLoai($loai): int
+    {
+        if (is_string($loai)) {
+            $u = strtoupper(trim($loai));
+            if ($u === 'TAI_CHINH') {
+                return 5;
+            }
+            if (is_numeric($loai)) {
+                return (int) $loai;
+            }
+        }
+        return (int) $loai;
     }
 }

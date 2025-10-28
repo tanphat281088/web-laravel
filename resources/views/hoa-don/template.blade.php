@@ -1,540 +1,292 @@
 <!DOCTYPE html>
 <html lang="vi">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hóa Đơn #{{ $donHang->id }}</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Hóa Đơn #{{ $donHang->id }}</title>
 
-        body {
-            font-family: 'DejaVu Sans', Arial, sans-serif;
-            font-size: 14px;
-            line-height: 1.6;
-            color: #333;
-        }
+  @php
+    $company = [
+      'name'  => 'PHÁT HOÀNG GIA FLORAL & DECOR',
+      'addr'  => 'Địa chỉ: 100 Nguyễn Minh Hoàng, Phường Bảy Hiền, TP. Hồ Chí Minh',
+      'phone' => 'Điện thoại: 0949 40 43 44',
+      'email' => 'Email: info@phathoanggia.com.vn',
+      'logo'  => asset('storage/logo.png'),
+    ];
+  @endphp
 
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-        }
+  <style>
+    :root{ --primary:#f8a8c8; }
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'DejaVu Sans',Arial,sans-serif;font-size:14px;line-height:1.55;color:#333;background:#fff}
+    .container{max-width:800px;margin:0 auto;padding:14px 18px}
 
-        .header {
-            text-align: center;
-            border-bottom: 3px solid #007bff;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
-        }
+    /* ===== HEADER ===== */
+    .header{border-bottom:3px solid var(--primary);padding-bottom:10px;margin-bottom:14px}
+    .header-top{display:flex;align-items:flex-start;gap:14px}
+    .logo{width:92px;height:92px;object-fit:contain;border:1px solid #eee;border-radius:6px;background:#fff;flex:0 0 92px}
+    .company-name{font-size:24px;font-weight:800;color:var(--primary);line-height:1.04;margin:0}
+    .company-line{font-size:13.5px;line-height:1.12;margin:0}
+    .invoice-title{text-align:center;font-size:28px;font-weight:700;color:#333;margin-top:6px}
 
-        .company-name {
-            font-size: 24px;
-            font-weight: bold;
-            color: #007bff;
-            margin-bottom: 5px;
-        }
+    /* ===== INFO ROW: 3 CỘT NGANG ===== */
+    .invoice-info{
+      display:flex;gap:14px;margin-bottom:16px;flex-wrap:wrap;
+    }
+    .info-col{
+      flex:1 1 0;       /* chia đều 3 cột */
+      min-width:0;      /* tránh tràn */
+      border:1px solid #eee;
+      border-radius:6px;
+      padding:10px;
+    }
+    .info-col h3{
+      color:#333;background:rgba(248,168,200,.25);
+      margin:-10px -10px 8px;padding:8px 10px;border-radius:6px 6px 0 0;
+      font-size:15px;font-weight:700;
+    }
+    .detail-row{display:flex;gap:6px;margin-bottom:4px}
+    .label{font-weight:700;flex:0 0 125px}
+    .value{flex:1 1 auto;min-width:0}
 
-        .invoice-title {
-            font-size: 28px;
-            font-weight: bold;
-            color: #333;
-            margin: 20px 0;
-        }
+    /* Khi màn rất hẹp (<768px) thì tự xuống 2 cột/1 cột */
+    @media (max-width: 768px){
+      .info-col{flex:1 1 100%}
+    }
 
-        .invoice-info {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 30px;
-        }
+    /* ===== TABLE ===== */
+    table{width:100%;border-collapse:collapse;margin:14px 0;table-layout:fixed}
+    col.col-stt{width:6%} col.col-name{width:46%} col.col-dvt{width:12%}
+    col.col-qty{width:10%} col.col-price{width:13%} col.col-amount{width:13%}
+    th{background:var(--primary);color:#fff;padding:10px 8px;text-align:left;font-weight:700}
+    td{padding:9px 8px;border-bottom:1px solid #ddd;vertical-align:top}
+    tbody tr:nth-child(even){background:#f8f9fa}
+    .text-right{text-align:right}.text-center{text-align:center}
+    td,th{word-break:break-word}
 
-        .invoice-details,
-        .customer-details {
-            width: 48%;
-        }
+    /* ===== TOTAL ===== */
+    .total-section{margin-top:18px;border-top:2px solid var(--primary);padding-top:12px}
+    .total-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #eee}
+    .total-row.final{font-size:18px;font-weight:700;color:var(--primary);border-bottom:3px solid var(--primary)}
+    .payment-status{margin-top:14px;padding:12px;border-radius:6px;text-align:center;font-weight:700}
+    .payment-paid{background:#d4edda;color:#155724;border:1px solid #c3e6cb}
+    .payment-unpaid{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb}
 
-        .invoice-details h3,
-        .customer-details h3 {
-            color: #007bff;
-            margin-bottom: 10px;
-            font-size: 16px;
-        }
+    /* ===== KÝ & FOOTER ===== */
+    .signature-section{margin-top:26px;display:flex;justify-content:space-between}
+    .signature-box{text-align:center;width:30%}
+    .signature-line{border-top:1px solid #333;margin-top:38px;padding-top:5px;font-style:italic}
+    .footer{margin-top:26px;text-align:center;color:#666;font-size:12px}
 
-        .detail-row {
-            margin-bottom: 5px;
-        }
+    /* ===== PRINT ===== */
+@media print{
+  .print-controls{display:none!important}
+  *{-webkit-print-color-adjust:exact!important;color-adjust:exact!important}
+  body{margin:0!important;padding:0!important;font-size:11px!important;line-height:1.35!important;color:#000!important;background:#fff!important}
+  .container{max-width:none!important;margin:0 auto!important;padding:8px 10px!important}
+  .header{border-bottom:2px solid #000!important;padding-bottom:8px!important;margin-bottom:10px!important}
+  .company-name{font-size:18px!important;color:#000!important}
+  .invoice-title{font-size:20px!important;color:#000!important;margin-top:4px!important}
 
-        .label {
-            font-weight: bold;
-            display: inline-block;
-            width: 120px;
-        }
+  /* ==== GIỮ 3 CỘT TRÊN 1 HÀNG KHI IN ==== */
+  .invoice-info{display:flex!important;flex-wrap:nowrap!important;gap:6px!important;margin-bottom:8px!important}
+  .info-col{
+    flex:0 0 33.333%!important;
+    max-width:33.333%!important;
+    border:1px solid #000!important;
+    padding:6px!important;
+    break-inside:avoid!important;   /* tránh vỡ cột khi in */
+  }
+  .info-col h3{
+    background:#000!important;color:#fff!important;
+    font-size:12px!important;margin:-6px -6px 6px!important;padding:4px 6px!important
+  }
+  .detail-row{margin-bottom:2px!important}
+  .label{flex:0 0 85px!important;font-size:10px!important}
+  .value{font-size:10px!important}
 
-        .table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 20px 0;
-        }
+  /* Bảng */
+  table{margin:10px 0!important;font-size:10px!important;table-layout:fixed!important;width:100%!important}
+  th{background:#000!important;color:#fff!important;padding:5px 4px!important;border:1px solid #000!important}
+  td{padding:5px 4px!important;border-bottom:1px solid #000!important;border-left:1px solid #000!important;border-right:1px solid #000!important;height:22px!important}
 
-        .table th {
-            background-color: #007bff;
-            color: white;
-            padding: 12px 8px;
-            text-align: left;
-            font-weight: bold;
-        }
+  .total-section{margin-top:8px!important;border-top:2px solid #000!important;padding-top:8px!important}
+  .total-row{padding:3px 0!important;font-size:10px!important}
+  .total-row.final{font-size:12px!important;color:#000!important;border-bottom:2px solid #000!important}
+  .payment-status{margin:8px 0!important;padding:8px!important;border:2px solid #000!important;background:#fff!important;color:#000!important}
 
-        .table td {
-            padding: 10px 8px;
-            border-bottom: 1px solid #ddd;
-        }
+  .signature-section{margin-top:12px!important;font-size:9px!important}
+  .signature-line{margin-top:24px!important;padding-top:3px!important}
+  .footer{margin-top:10px!important;font-size:8px!important;color:#000!important}
 
-        .table tbody tr:nth-child(even) {
-            background-color: #f8f9fa;
-        }
+  @page{size:A4 portrait;margin:0.3cm 0.5cm}
+  .container,table,.total-section{page-break-inside:avoid}
+}
 
-        .text-right {
-            text-align: right;
-        }
-
-        .text-center {
-            text-align: center;
-        }
-
-        .total-section {
-            margin-top: 30px;
-            border-top: 2px solid #007bff;
-            padding-top: 20px;
-        }
-
-        .total-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid #eee;
-        }
-
-        .total-row.final {
-            font-size: 18px;
-            font-weight: bold;
-            color: #007bff;
-            border-bottom: 3px solid #007bff;
-        }
-
-        .payment-status {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 5px;
-            text-align: center;
-            font-weight: bold;
-        }
-
-        .payment-paid {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        .payment-unpaid {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-
-        .footer {
-            margin-top: 50px;
-            text-align: center;
-            color: #666;
-            font-size: 12px;
-        }
-
-        .signature-section {
-            margin-top: 40px;
-            display: flex;
-            justify-content: space-between;
-        }
-
-        .signature-box {
-            text-align: center;
-            width: 30%;
-        }
-
-        .signature-line {
-            border-top: 1px solid #333;
-            margin-top: 60px;
-            padding-top: 5px;
-            font-style: italic;
-        }
-    </style>
+  </style>
 </head>
-
 <body>
-    <!-- Print Controls -->
-    <div class="print-controls"
-        style="position: fixed; top: 10px; right: 10px; z-index: 1000; background: white; padding: 10px; border-radius: 5px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); display: none;"
-        id="printControls">
-        <button onclick="window.print()"
-            style="background: #007bff; color: white; border: none; padding: 8px 15px; border-radius: 3px; margin-right: 5px; cursor: pointer;">🖨️
-            In hóa đơn</button>
-        <button onclick="downloadPDF()"
-            style="background: #28a745; color: white; border: none; padding: 8px 15px; border-radius: 3px; margin-right: 5px; cursor: pointer;">📄
-            Tải PDF</button>
-        <button onclick="closePrint()"
-            style="background: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 3px; cursor: pointer;">✖️
-            Đóng</button>
+  <!-- Print Controls -->
+  <div id="printControls" class="print-controls"
+       style="position:fixed;top:10px;right:10px;z-index:1000;background:#fff;padding:10px;border-radius:5px;box-shadow:0 2px 10px rgba(0,0,0,.1);display:none;">
+    <button onclick="window.print()" style="background:var(--primary);color:#fff;border:none;padding:8px 15px;border-radius:3px;margin-right:5px;cursor:pointer;">🖨️ In hóa đơn</button>
+    <button onclick="downloadPDF()" style="background:#28a745;color:#fff;border:none;padding:8px 15px;border-radius:3px;margin-right:5px;cursor:pointer;">📄 Tải PDF</button>
+    <button onclick="closePrint()" style="background:#6c757d;color:#fff;border:none;padding:8px 15px;border-radius:3px;cursor:pointer;">✖️ Đóng</button>
+  </div>
+
+  <script>
+    window.addEventListener('load',function(){
+      document.getElementById('printControls').style.display='block';
+      setTimeout(function(){window.print();},500);
+    });
+    function closePrint(){ if(window.opener){window.close();} else {window.history.back();} }
+    function downloadPDF() {}
+  </script>
+
+  <div class="container">
+    <!-- HEADER -->
+    <div class="header">
+      <div class="header-top">
+        @if(!empty($company['logo']))
+          <img class="logo" src="{{ $company['logo'] }}" alt="Logo">
+        @else
+          <div class="logo" style="border:1px dashed #ddd;"></div>
+        @endif
+        <div class="company">
+          <div class="company-name">{{ $company['name'] }}</div>
+          <p class="company-line">{{ $company['addr'] }}</p>
+          <p class="company-line">{{ $company['phone'] }} | {{ $company['email'] }}</p>
+        </div>
+      </div>
+      <div class="invoice-title">THÔNG TIN ĐƠN HÀNG</div>
     </div>
 
-    <script>
-        // Tự động trigger in khi trang load
-        window.addEventListener('load', function() {
-            // Hiển thị controls
-            document.getElementById('printControls').style.display = 'block';
-
-            // Delay một chút để trang load hoàn toàn rồi mới trigger print
-            setTimeout(function() {
-                // Tự động mở print dialog
-                window.print();
-            }, 500);
-        });
-
-        // Function đóng cửa sổ
-        function closePrint() {
-            // Nếu là popup/tab mới thì đóng
-            if (window.opener) {
-                window.close();
-            } else {
-                // Nếu không thì về trang trước
-                window.history.back();
-            }
-        }
-
-        // CSS cho print media - Tối ưu cho 1 trang A4, đen trắng
-        const printStyles = `
-            @media print {
-                .print-controls {
-                    display: none !important;
-                }
-                
-                /* Reset và tối ưu cho 1 trang */
-                * {
-                    -webkit-print-color-adjust: exact !important;
-                    color-adjust: exact !important;
-                }
-                
-                                 body {
-                     margin: 0 !important;
-                     padding: 0 !important;
-                     font-size: 11px !important;
-                     line-height: 1.4 !important;
-                     color: #000 !important;
-                     background: #fff !important;
-                     min-height: 100% !important;
-                 }
-                
-                                 .container {
-                     max-width: none !important;
-                     margin: 0 auto !important;
-                     padding: 8px 15px !important;
-                     height: 98% !important;
-                 }
-                
-                /* Header compact */
-                .header {
-                    border-bottom: 2px solid #000 !important;
-                    padding-bottom: 8px !important;
-                    margin-bottom: 12px !important;
-                }
-                
-                .company-name {
-                    font-size: 18px !important;
-                    color: #000 !important;
-                    margin-bottom: 3px !important;
-                }
-                
-                .invoice-title {
-                    font-size: 20px !important;
-                    color: #000 !important;
-                    margin: 8px 0 !important;
-                }
-                
-                /* Invoice info compact */
-                .invoice-info {
-                    margin-bottom: 12px !important;
-                }
-                
-                .invoice-details h3, .customer-details h3 {
-                    color: #000 !important;
-                    font-size: 13px !important;
-                    margin-bottom: 5px !important;
-                }
-                
-                .detail-row {
-                    margin-bottom: 2px !important;
-                    font-size: 10px !important;
-                }
-                
-                .label {
-                    width: 80px !important;
-                    font-size: 10px !important;
-                }
-                
-                                 /* Table compact */
-                 .table {
-                     margin: 12px 0 !important;
-                     font-size: 10px !important;
-                     width: 100% !important;
-                     table-layout: fixed !important;
-                 }
-                 
-                 .table th {
-                     background-color: #000 !important;
-                     color: #fff !important;
-                     padding: 5px 4px !important;
-                     font-size: 10px !important;
-                     border: 1px solid #000 !important;
-                 }
-                 
-                 .table td {
-                     padding: 5px 4px !important;
-                     border-bottom: 1px solid #000 !important;
-                     border-left: 1px solid #000 !important;
-                     border-right: 1px solid #000 !important;
-                     font-size: 10px !important;
-                     height: 22px !important;
-                 }
-                
-                .table tbody tr:nth-child(even) {
-                    background-color: #f5f5f5 !important;
-                }
-                
-                                 /* Total section compact */
-                 .total-section {
-                     margin-top: 10px !important;
-                     border-top: 2px solid #000 !important;
-                     padding-top: 10px !important;
-                 }
-                 
-                 .total-row {
-                     padding: 3px 0 !important;
-                     border-bottom: 1px solid #ccc !important;
-                     font-size: 10px !important;
-                     line-height: 1.5 !important;
-                 }
-                 
-                 .total-row.final {
-                     font-size: 12px !important;
-                     color: #000 !important;
-                     border-bottom: 2px solid #000 !important;
-                     font-weight: bold !important;
-                     padding: 5px 0 !important;
-                 }
-                
-                                 /* Payment status compact */
-                 .payment-status {
-                     margin-top: 10px !important;
-                     margin-bottom: 10px !important;
-                     padding: 8px !important;
-                     text-align: center !important;
-                     font-weight: bold !important;
-                     font-size: 11px !important;
-                     border: 2px solid #000 !important;
-                     background-color: #fff !important;
-                     color: #000 !important;
-                 }
-                
-                                 /* Signature section compact */
-                 .signature-section {
-                     margin-top: 15px !important;
-                     font-size: 9px !important;
-                     position: relative !important;
-                     bottom: 0 !important;
-                 }
-                 
-                 .signature-box {
-                     width: 30% !important;
-                 }
-                 
-                 .signature-line {
-                     border-top: 1px solid #000 !important;
-                     margin-top: 30px !important;
-                     padding-top: 3px !important;
-                 }
-                
-                                 /* Footer compact */
-                 .footer {
-                     margin-top: 12px !important;
-                     font-size: 8px !important;
-                     color: #000 !important;
-                     position: relative !important;
-                     bottom: 0 !important;
-                 }
-                
-                                 /* Đảm bảo fit trong 1 trang A4 với chiều dài tăng thêm */
-                 @page {
-                     size: A4 portrait;
-                     margin: 0.3cm 0.5cm;
-                 }
-                
-                /* Ngăn ngừa page break */
-                .container {
-                    page-break-inside: avoid;
-                }
-                
-                .table {
-                    page-break-inside: avoid;
-                }
-                
-                .total-section {
-                    page-break-inside: avoid;
-                }
-            }
-        `;
-
-        // Thêm print styles
-        const styleSheet = document.createElement("style");
-        styleSheet.type = "text/css";
-        styleSheet.innerText = printStyles;
-        document.head.appendChild(styleSheet);
-    </script>
-    <div class="container">
-        <!-- Header -->
-        <div class="header">
-            <div class="company-name">CÔNG TY ABC</div>
-            <div>Địa chỉ: 123 Đường ABC, TP. Cần Thơ</div>
-            <div>Điện thoại: 0123 456 789 | Email: info@abc.com</div>
-            <div class="invoice-title">HÓA ĐƠN BÁN HÀNG</div>
+    <!-- INFO: 3 CỘT NGANG -->
+    <div class="invoice-info">
+      <!-- Cột 1: ĐƠN HÀNG -->
+      <div class="info-col">
+        <h3>Thông tin đơn hàng</h3>
+        <div class="detail-row">
+          <span class="label">Mã đơn hàng:</span>
+          <span class="value">#{{ str_pad($donHang->ma_don_hang, 6, '0', STR_PAD_LEFT) }}</span>
         </div>
-
-        <!-- Invoice Info -->
-        <div class="invoice-info">
-            <div class="invoice-details">
-                <h3>Thông tin hóa đơn</h3>
-                <div class="detail-row">
-                    <span class="label">Mã hóa đơn:</span>
-                    #{{ str_pad($donHang->ma_don_hang, 6, '0', STR_PAD_LEFT) }}
-                </div>
-                <div class="detail-row">
-                    <span class="label">Ngày tạo:</span>
-                    @php
-                        // Xử lý datetime đã được format bởi DateTimeFormatter trait
-                        $createdAt = $donHang->created_at;
-                        if (strpos($createdAt, '/') !== false) {
-                            // Nếu đã được format thành d/m/Y H:i:s thì hiển thị trực tiếp
-                            echo substr($createdAt, 0, 16); // Lấy d/m/Y H:i
-                        } else {
-                            // Nếu chưa format thì dùng Carbon
-                            echo \Carbon\Carbon::parse($createdAt)->format('d/m/Y H:i');
-                        }
-                    @endphp
-                </div>
-                <div class="detail-row">
-                    <span class="label">Người bán:</span>
-                    {{ $donHang->nguoiTao->name ?? 'N/A' }}
-                </div>
-            </div>
-
-            <div class="customer-details">
-                <h3>Thông tin khách hàng</h3>
-                <div class="detail-row">
-                    <span class="label">Tên khách hàng:</span>
-                    {{ $donHang->ten_khach_hang ?? 'Khách lẻ' }}
-                </div>
-                <div class="detail-row">
-                    <span class="label">Số điện thoại:</span>
-                    {{ $donHang->so_dien_thoai ?? 'N/A' }}
-                </div>
-                <div class="detail-row">
-                    <span class="label">Ghi chú:</span>
-                    {{ $donHang->ghi_chu ?? 'Không có' }}
-                </div>
-            </div>
+        <div class="detail-row">
+          <span class="label">Ngày tạo:</span>
+          <span class="value">
+            @php
+              $createdAt = $donHang->created_at;
+              if (is_string($createdAt) && strpos($createdAt, '/') !== false) {
+                  echo substr($createdAt, 0, 16);
+              } else {
+                  echo \Carbon\Carbon::parse($createdAt)->format('d/m/Y H:i');
+              }
+            @endphp
+          </span>
         </div>
-
-        <!-- Product Table -->
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>STT</th>
-                    <th>Tên sản phẩm</th>
-                    <th>Đơn vị tính</th>
-                    <th class="text-center">Số lượng</th>
-                    <th class="text-right">Đơn giá</th>
-                    <th class="text-right">Thành tiền</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach ($donHang->chiTietDonHangs as $index => $chiTiet)
-                    <tr>
-                        <td class="text-center">{{ $index + 1 }}</td>
-                        <td>{{ $chiTiet->sanPham->ten_san_pham ?? 'N/A' }}</td>
-                        <td>{{ $chiTiet->donViTinh->ten_don_vi ?? 'N/A' }}</td>
-                        <td class="text-center">{{ number_format($chiTiet->so_luong) }}</td>
-                        <td class="text-right">{{ number_format($chiTiet->don_gia, 0, ',', '.') }}đ</td>
-                        <td class="text-right">{{ number_format($chiTiet->thanh_tien, 0, ',', '.') }}đ</td>
-                    </tr>
-                @endforeach
-            </tbody>
-        </table>
-
-        <!-- Total Section -->
-        <div class="total-section">
-            <div class="total-row">
-                <span>Tổng tiền hàng:</span>
-                <span>{{ number_format($donHang->tong_tien_hang, 0, ',', '.') }}đ</span>
-            </div>
-            <div class="total-row">
-                <span>Giảm giá:</span>
-                <span>-{{ number_format($donHang->giam_gia, 0, ',', '.') }}đ</span>
-            </div>
-            <div class="total-row">
-                <span>Chi phí khác:</span>
-                <span>{{ number_format($donHang->chi_phi, 0, ',', '.') }}đ</span>
-            </div>
-            <div class="total-row final">
-                <span>Tổng tiền cần thanh toán:</span>
-                <span>{{ number_format($donHang->tong_tien_can_thanh_toan, 0, ',', '.') }}đ</span>
-            </div>
-            <div class="total-row">
-                <span>Số tiền đã thanh toán:</span>
-                <span>{{ number_format($donHang->so_tien_da_thanh_toan, 0, ',', '.') }}đ</span>
-            </div>
-            <div class="total-row">
-                <span>Còn lại:</span>
-                <span>{{ number_format($donHang->tong_tien_can_thanh_toan - $donHang->so_tien_da_thanh_toan, 0, ',', '.') }}đ</span>
-            </div>
+        <div class="detail-row">
+          <span class="label">Người bán:</span>
+          <span class="value">{{ $donHang->nguoiTao->name ?? 'N/A' }}</span>
         </div>
+      </div>
 
-        <!-- Payment Status -->
-        <div class="payment-status {{ $donHang->trang_thai_thanh_toan ? 'payment-paid' : 'payment-unpaid' }}">
-            {{ $donHang->trang_thai_thanh_toan ? 'ĐÃ THANH TOÁN ĐỦ' : 'CHƯA THANH TOÁN ĐỦ' }}
-        </div>
+      <!-- Cột 2: KHÁCH HÀNG -->
+      <div class="info-col">
+        <h3>Thông tin khách hàng</h3>
+        <div class="detail-row"><span class="label">Tên KH:</span><span class="value">{{ $donHang->ten_khach_hang ?? 'Khách lẻ' }}</span></div>
+        <div class="detail-row"><span class="label">SĐT:</span><span class="value">{{ $donHang->so_dien_thoai ?? 'N/A' }}</span></div>
+        <div class="detail-row"><span class="label">Địa chỉ giao:</span><span class="value">{{ $donHang->dia_chi_giao_hang ?? 'N/A' }}</span></div>
+        <div class="detail-row"><span class="label">Ghi chú:</span><span class="value">{{ $donHang->ghi_chu ?? 'Không có' }}</span></div>
+      </div>
 
-        <!-- Signature Section -->
-        <div class="signature-section">
-            <div class="signature-box">
-                <div>Khách hàng</div>
-                <div class="signature-line">(Ký, ghi rõ họ tên)</div>
-            </div>
-            <div class="signature-box">
-                <div>Người bán hàng</div>
-                <div class="signature-line">(Ký, ghi rõ họ tên)</div>
-            </div>
-            <div class="signature-box">
-                <div>Thủ kho</div>
-                <div class="signature-line">(Ký, ghi rõ họ tên)</div>
-            </div>
+      <!-- Cột 3: NGƯỜI NHẬN -->
+      <div class="info-col">
+        <h3>Thông tin người nhận</h3>
+        <div class="detail-row"><span class="label">Tên người nhận:</span><span class="value">{{ $donHang->nguoi_nhan_ten ?? '—' }}</span></div>
+        <div class="detail-row"><span class="label">SĐT người nhận:</span><span class="value">{{ $donHang->nguoi_nhan_sdt ?? '—' }}</span></div>
+        <div class="detail-row">
+          <span class="label">Ngày giờ nhận:</span>
+          <span class="value">
+            @php
+              $tgn = $donHang->nguoi_nhan_thoi_gian ?? null;
+              if (empty($tgn)) {
+                echo '—';
+              } else {
+                try {
+                  $tgnStr = is_string($tgn) ? $tgn : \Carbon\Carbon::parse($tgn)->toDateTimeString();
+                  echo \Carbon\Carbon::parse($tgnStr)->format('d/m/Y H:i');
+                } catch (\Throwable $e) { echo '—'; }
+              }
+            @endphp
+          </span>
         </div>
-
-        <!-- Footer -->
-        <div class="footer">
-            <p>Cảm ơn quý khách đã mua hàng!</p>
-            <p>Hóa đơn được in vào lúc: {{ now()->format('d/m/Y H:i:s') }}</p>
-        </div>
+      </div>
     </div>
+
+    <!-- BẢNG SẢN PHẨM -->
+    <table>
+      <colgroup>
+        <col class="col-stt"><col class="col-name"><col class="col-dvt">
+        <col class="col-qty"><col class="col-price"><col class="col-amount">
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="text-center">STT</th>
+          <th>Tên sản phẩm</th>
+          <th>Đơn vị tính</th>
+          <th class="text-center">Số lượng</th>
+          <th class="text-right">Đơn giá</th>
+          <th class="text-right">Thành tiền</th>
+        </tr>
+      </thead>
+      <tbody>
+        @foreach ($donHang->chiTietDonHangs as $index => $chiTiet)
+          <tr>
+            <td class="text-center">{{ $index + 1 }}</td>
+            <td>{{ $chiTiet->sanPham->ten_san_pham ?? 'N/A' }}</td>
+            <td>{{ $chiTiet->donViTinh->ten_don_vi ?? 'N/A' }}</td>
+            <td class="text-center">{{ number_format($chiTiet->so_luong) }}</td>
+            <td class="text-right">{{ number_format($chiTiet->don_gia, 0, ',', '.') }}đ</td>
+            <td class="text-right">{{ number_format($chiTiet->thanh_tien, 0, ',', '.') }}đ</td>
+          </tr>
+        @endforeach
+      </tbody>
+    </table>
+
+    <!-- TỔNG KẾT -->
+    @php
+      $tongHang  = (int)($donHang->tong_tien_hang ?? 0);
+      $giamGia   = (int)($donHang->giam_gia ?? 0);
+      $chiPhi    = (int)($donHang->chi_phi ?? 0);
+      $tongCanTT = (int)($donHang->tong_tien_can_thanh_toan ?? max(0, $tongHang - $giamGia + $chiPhi));
+      $daTT      = (int)($donHang->so_tien_da_thanh_toan ?? 0);
+      $conLai    = max(0, $tongCanTT - $daTT);
+    @endphp
+
+    <div class="total-section">
+      <div class="total-row"><span>Tổng tiền hàng:</span><span>{{ number_format($tongHang, 0, ',', '.') }}đ</span></div>
+      <div class="total-row"><span>Giảm giá:</span><span>-{{ number_format($giamGia, 0, ',', '.') }}đ</span></div>
+      <div class="total-row"><span>Chi phí khác:</span><span>{{ number_format($chiPhi, 0, ',', '.') }}đ</span></div>
+      <div class="total-row final"><span>Tổng tiền cần thanh toán:</span><span>{{ number_format($tongCanTT, 0, ',', '.') }}đ</span></div>
+      <div class="total-row"><span>Số tiền đã thanh toán:</span><span>{{ number_format($daTT, 0, ',', '.') }}đ</span></div>
+      <div class="total-row"><span>Còn lại:</span><span>{{ number_format($conLai, 0, ',', '.') }}đ</span></div>
+    </div>
+
+    <!-- TRẠNG THÁI THANH TOÁN -->
+    <div class="payment-status {{ $conLai === 0 ? 'payment-paid' : 'payment-unpaid' }}">
+      {{ $conLai === 0 ? 'ĐÃ THANH TOÁN ĐỦ' : 'CHƯA THANH TOÁN ĐỦ' }}
+    </div>
+
+    <!-- CHỮ KÝ -->
+    <div class="signature-section">
+      <div class="signature-box"><div>Khách hàng</div><div class="signature-line">(Ký, ghi rõ họ tên)</div></div>
+      <div class="signature-box"><div>Người bán hàng</div><div class="signature-line">(Ký, ghi rõ họ tên)</div></div>
+      <div class="signature-box"><div>Thủ kho</div><div class="signature-line">(Ký, ghi rõ họ tên)</div></div>
+    </div>
+
+    <div class="footer">
+      <p>Cảm ơn quý khách đã mua hàng!</p>
+      <p>Hóa đơn được in vào lúc: {{ now()->format('d/m/Y H:i:s') }}</p>
+    </div>
+  </div>
 </body>
-
 </html>

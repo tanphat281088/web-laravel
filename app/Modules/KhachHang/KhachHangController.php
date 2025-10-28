@@ -93,14 +93,19 @@ class KhachHangController extends Controller
         return CustomResponse::success([], 'Xóa thành công');
     }
 
-    public function getOptions()
-    {
-        $result = $this->khachHangService->getOptions();
-        if ($result instanceof \Illuminate\Http\JsonResponse) {
-            return $result;
-        }
-        return CustomResponse::success($result);
+public function getOptions(\Illuminate\Http\Request $request)
+{
+    // nếu muốn vẫn dùng helper thì:
+    // $params = \App\Class\Helper::validateFilterParams($request->all());
+    $params = $request->all();
+
+    $result = $this->khachHangService->getOptions($params);
+    if ($result instanceof \Illuminate\Http\JsonResponse) {
+        return $result;
     }
+    return \App\Class\CustomResponse::success($result);
+}
+
 
     /**
      * Tải excel mẫu:
