@@ -38,7 +38,8 @@ Route::prefix('cskh/points')->group(function () {
 
 // Auth
 Route::post('/auth/login', [AuthController::class, 'login'])->name('login');
-Route::get('/auth/refresh', [AuthController::class, 'refresh'])->name('refresh');
+Route::match(['GET','POST'], '/auth/refresh', [AuthController::class, 'refresh'])->name('refresh');
+
 Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword'])->name('forgot-password');
 Route::post('/auth/reset-password', [AuthController::class, 'resetPassword'])->name('reset-password');
 Route::post('/auth/verify-otp', [AuthController::class, 'verifyOTP'])->name('verify-otp');
@@ -59,6 +60,10 @@ Route::get('expense-categories/parents', [ExpenseCategoryController::class, 'par
 Route::get('expense-categories/options', [ExpenseCategoryController::class, 'options']);
 Route::get('expense-categories/tree',    [ExpenseCategoryController::class, 'tree']);
 
+// 👉 Auth-only (bỏ permission): dropdown "Tham chiếu" cho VT
+Route::middleware(['jwt'])->get('vt/references', [\App\Http\Controllers\VT\VtReferenceController::class, 'index']);
+
+
 Route::group([
   'middleware' => ['jwt', 'permission'],
 ], function ($router) {
@@ -67,6 +72,8 @@ Route::group([
   Route::group(['prefix' => 'auth'], function () {
     Route::post('logout', [AuthController::class, 'logout']);
     Route::post('me', [AuthController::class, 'me']);
+        Route::match(['GET','POST'], 'me', [AuthController::class, 'me']);
+
     Route::post('profile', [AuthController::class, 'updateProfile']);
   });
 
@@ -355,6 +362,53 @@ Route::group([
     Route::delete('/{id}', [\App\Modules\PhieuThu\PhieuThuController::class, 'destroy']);
     Route::post('/import-excel', [\App\Modules\PhieuThu\PhieuThuController::class, 'importExcel']);
   });
+
+// ================== Quản lý vật tư (VT) ==================
+Route::prefix('vt')->group(function () {
+    // Danh mục VT
+    Route::prefix('items')->group(function () {
+        Route::get('/',        [\App\Http\Controllers\VT\VtItemController::class, 'index']);
+        Route::post('/',       [\App\Http\Controllers\VT\VtItemController::class, 'store']);
+        Route::get('/{id}',    [\App\Http\Controllers\VT\VtItemController::class, 'show'])->whereNumber('id');
+        Route::put('/{id}',    [\App\Http\Controllers\VT\VtItemController::class, 'update'])->whereNumber('id');
+        Route::delete('/{id}', [\App\Http\Controllers\VT\VtItemController::class, 'destroy'])->whereNumber('id');
+
+        // Options + Import tồn đầu
+        Route::get('/options',         [\App\Http\Controllers\VT\VtItemController::class, 'options']);
+        Route::post('/import-opening', [\App\Http\Controllers\VT\VtItemController::class, 'importOpening']);
+    });
+
+    // Phiếu nhập VT
+    Route::prefix('receipts')->group(function () {
+        Route::get('/',        [\App\Http\Controllers\VT\VtReceiptController::class, 'index']);
+        Route::post('/',       [\App\Http\Controllers\VT\VtReceiptController::class, 'store']);
+        Route::get('/{id}',    [\App\Http\Controllers\VT\VtReceiptController::class, 'show'])->whereNumber('id');
+        Route::put('/{id}',    [\App\Http\Controllers\VT\VtReceiptController::class, 'update'])->whereNumber('id');
+        Route::delete('/{id}', [\App\Http\Controllers\VT\VtReceiptController::class, 'destroy'])->whereNumber('id');
+    });
+
+    // Phiếu xuất VT
+    Route::prefix('issues')->group(function () {
+        Route::get('/',        [\App\Http\Controllers\VT\VtIssueController::class, 'index']);
+        Route::post('/',       [\App\Http\Controllers\VT\VtIssueController::class, 'store']);
+        Route::get('/{id}',    [\App\Http\Controllers\VT\VtIssueController::class, 'show'])->whereNumber('id');
+        Route::put('/{id}',    [\App\Http\Controllers\VT\VtIssueController::class, 'update'])->whereNumber('id');
+        Route::delete('/{id}', [\App\Http\Controllers\VT\VtIssueController::class, 'destroy'])->whereNumber('id');
+    });
+
+    // Tồn & Sổ kho
+    Route::get('stocks', [\App\Http\Controllers\VT\VtStockController::class, 'index']);
+    Route::get('ledger', [\App\Http\Controllers\VT\VtLedgerController::class, 'index']);
+
+    // === NEW: dropdown masters ===
+    Route::get('categories/options', [\App\Http\Controllers\VT\VtMasterController::class, 'categoryOptions']);
+    Route::get('groups/options',     [\App\Http\Controllers\VT\VtMasterController::class, 'groupOptions']);
+    Route::get('units/options',      [\App\Http\Controllers\VT\VtMasterController::class, 'unitOptions']);
+
+
+});
+
+
 
   // CongThucSanXuat
   Route::prefix('cong-thuc-san-xuat')->group(function () {

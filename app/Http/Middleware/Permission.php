@@ -27,6 +27,20 @@ class Permission
         'api/bao-cao-quan-tri/kqkd-detail',
         'api/bao-cao-quan-tri/kqkd-export',
         // ================================================
+
+        // ====== MỚI: mở toàn bộ API Quản lý vật tư (VT) ======
+        // Lưu ý: vì foreach ở dưới dùng "startsWith", các prefix này
+        // sẽ bao trùm luôn các đường dẫn con: /{id}, /options, ...
+        'api/vt/items',
+        'api/vt/receipts',
+        'api/vt/issues',
+        'api/vt/stocks',
+        'api/vt/ledger',
+        // (nếu bạn bật import tồn đầu)
+        'api/vt/items/import-opening',
+        // ======================================================
+
+
     ];
 
     /**
@@ -39,6 +53,17 @@ class Permission
         'attendance'=> 'nhan-su',   // alias cho các URL /attendance/* dùng quyền của 'nhan-su'
         // (Không cần alias cho 'bao-cao-quan-tri' vì đã whitelist ở trên)
             'cskh/points' => 'cskh-points', // ✅ map URL /cskh/points/* -> module quyền 'cskh-points'
+
+                    // ✅ VT (Quản lý vật tư): map URL -> module quyền
+        // Khi bạn seed quyền thật, chỉ cần tạo các module bên trái:
+        // vt, vt-items, vt-receipts, vt-issues, vt-stocks
+        'vt'          => 'vt',
+        'vt/items'    => 'vt-items',
+        'vt/receipts' => 'vt-receipts',
+        'vt/issues'   => 'vt-issues',
+        'vt/stocks'   => 'vt-stocks',
+        'vt/ledger'   => 'vt-stocks', // ledger xem như quyền xem tồn/sổ kho
+
 
     ];
 
