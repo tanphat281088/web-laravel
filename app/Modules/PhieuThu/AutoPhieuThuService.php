@@ -71,44 +71,79 @@ class AutoPhieuThuService
         return $partial;
     }
 
-    protected function createAdjustmentReceipt(DonHang $donHang, float $delta): void
-    {
-        $reason = config('thu_chi.adjustment_reason', 'Hiệu chỉnh theo thay đổi đơn hàng');
+   protected function createAdjustmentReceipt(DonHang $donHang, float $delta): void
+{
+    $reason = config('thu_chi.adjustment_reason', 'Hiệu chỉnh theo thay đổi đơn hàng');
 
-        $epoch = optional($donHang->updated_at)->timestamp ?? now()->timestamp;
-        $idempotentKey = implode(':', [
-            'adj', (string) $donHang->id, (string) $epoch, number_format($delta, 2, '.', '')
-        ]);
+    $epoch = optional($donHang->updated_at)->timestamp ?? now()->timestamp;
+    $idempotentKey = implode(':', [
+        'adj', (string) $donHang->id, (string) $epoch, number_format($delta, 2, '.', '')
+    ]);
 
-        if (PhieuThu::query()->where('idempotent_key', $idempotentKey)->exists()) {
-            return;
-        }
-
-        // Đổi số này nếu hệ thống quy ước khác (1=tiền mặt, 2=CK…)
-        $defaultPaymentMethod = 0;
-        $maPhieuThu = $this->generateReceiptCode();
-
-        $phieu = PhieuThu::create([
-            'ma_phieu_thu'           => $maPhieuThu,
-            'khach_hang_id'          => $donHang->khach_hang_id ?? null,
-            'don_hang_id'            => $donHang->id,
-            'so_tien'                => $delta,                 // (+) thu thêm, (-) hoàn/giảm
-            'loai_phieu_thu'         => 1,                      // 1: thu theo đơn hàng
-            'phuong_thuc_thanh_toan' => $defaultPaymentMethod,
-            'ly_do_thu'              => $reason . ' #' . ($donHang->ma_don_hang ?? $donHang->id),
-            'idempotent_key'         => $idempotentKey,
-            'nguoi_tao'              => Auth::id() ?? 1,
-            'nguoi_cap_nhat'         => Auth::id() ?? 1,
-            'ngay_thu'               => now(),
-        ]);
-
-        // Bảng chi tiết không có cột ghi_chu → chỉ ghi cần thiết
-        ChiTietPhieuThu::create([
-            'phieu_thu_id' => $phieu->id,
-            'don_hang_id'  => $donHang->id,
-            'so_tien'      => $delta,
-        ]);
+    if (PhieuThu::query()->where('idempotent_key', $idempotentKey)->exists()) {
+        return;
     }
+
+    // Sinh mã phiếu
+    $maPhieuThu = $this->generateReceiptCode();
+
+    /* ========= ÉP CHUYỂN KHOẢN + GẮN TK MẶC ĐỊNH + PREFILL BANK/ACC ========= */
+    $defaultAccId = (int) (config('thu_chi.auto_receipt_account_id') ?: 0);
+
+    // Bắt buộc CHUYỂN KHOẢN
+    $method      = 2;
+    $taiKhoanId  = $defaultAccId > 0 ? $defaultAccId : null;
+    $nganHang    = null;
+    $soTaiKhoan  = null;
+
+    // Prefill ngân hàng/số TK để UI hiển thị rõ
+    if ($taiKhoanId) {
+        $tk = DB::table('tai_khoan_tiens')->where('id', $taiKhoanId)->first();
+        if ($tk) {
+            $nganHang   = (string)($tk->ngan_hang ?? '');
+            $soTaiKhoan = (string)($tk->so_tai_khoan ?? '');
+        }
+    }
+    /* ============================== HẾT KHỐI ÉP ============================== */
+
+    $phieu = PhieuThu::create([
+        'ma_phieu_thu'           => $maPhieuThu,
+        'khach_hang_id'          => $donHang->khach_hang_id ?? null,
+        'don_hang_id'            => $donHang->id,
+        'so_tien'                => $delta,                 // (+) thu thêm, (-) hoàn/giảm
+        'loai_phieu_thu'         => 1,                      // 1: thu theo đơn hàng
+        'phuong_thuc_thanh_toan' => $method,                // 2 = Chuyển khoản
+        'tai_khoan_id'           => $taiKhoanId,            // ID TK mặc định (ÁNH TUYẾT)
+        'ngan_hang'              => $nganHang,              // hiển thị UI
+        'so_tai_khoan'           => $soTaiKhoan,            // hiển thị UI
+        'ly_do_thu'              => $reason . ' #' . ($donHang->ma_don_hang ?? $donHang->id),
+        'idempotent_key'         => $idempotentKey,
+        'nguoi_tao'              => Auth::id() ?? 1,
+        'nguoi_cap_nhat'         => Auth::id() ?? 1,
+        'ngay_thu'               => now(),
+    ]);
+
+    // (Phòng hờ) Nếu vì lý do nào đó 4 field bị nuốt khi create() → force fill
+    if (empty($phieu->tai_khoan_id) || (int)$phieu->phuong_thuc_thanh_toan !== 2) {
+        $phieu->forceFill([
+            'phuong_thuc_thanh_toan' => 2,
+            'tai_khoan_id'           => $taiKhoanId,
+            'ngan_hang'              => $nganHang,
+            'so_tai_khoan'           => $soTaiKhoan,
+        ])->save();
+    }
+
+    // Bảng chi tiết không có cột ghi_chu → chỉ ghi cần thiết
+    ChiTietPhieuThu::create([
+        'phieu_thu_id' => $phieu->id,
+        'don_hang_id'  => $donHang->id,
+        'so_tien'      => $delta,
+    ]);
+
+    /** Ghi bút toán Thu (+) vào Sổ quỹ theo tai_khoan_id (ưu tiên dùng tai_khoan_id đã set ở trên) */
+    app(\App\Services\Cash\CashLedgerService::class)->recordReceipt($phieu);
+}
+
 
     protected function updateLatestAutoReceipt(DonHang $donHang, float $delta): void
     {

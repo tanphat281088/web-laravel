@@ -363,6 +363,47 @@ Route::group([
     Route::post('/import-excel', [\App\Modules\PhieuThu\PhieuThuController::class, 'importExcel']);
   });
 
+// ================== Quản lý dòng tiền (READ-ONLY, an toàn) ==================
+Route::prefix('cash')->group(function () {
+
+    // Danh mục tài khoản tiền
+    Route::get('/accounts',          [\App\Http\Controllers\Cash\CashAccountController::class, 'index']);
+    Route::get('/accounts/options',  [\App\Http\Controllers\Cash\CashAccountController::class, 'options']);
+
+  // WRITE: Tài khoản tiền
+  Route::post('/accounts',                 [\App\Http\Controllers\Cash\CashAccountController::class, 'store']);
+  Route::put ('/accounts/{id}',            [\App\Http\Controllers\Cash\CashAccountController::class, 'update'])->whereNumber('id');
+  Route::delete('/accounts/{id}',          [\App\Http\Controllers\Cash\CashAccountController::class, 'destroy'])->whereNumber('id');
+
+
+
+    // Alias tài khoản (phục vụ auto-map) - chỉ đọc
+    Route::get('/aliases',           [\App\Http\Controllers\Cash\CashAliasController::class, 'index']);
+
+  // WRITE: Alias tài khoản
+  Route::post('/aliases',                 [\App\Http\Controllers\Cash\CashAliasController::class, 'store']);
+  Route::put ('/aliases/{id}',            [\App\Http\Controllers\Cash\CashAliasController::class, 'update'])->whereNumber('id');
+  Route::delete('/aliases/{id}',          [\App\Http\Controllers\Cash\CashAliasController::class, 'destroy'])->whereNumber('id');
+
+
+
+    // Sổ quỹ & số dư (đọc-only)
+    Route::get('/ledger',            [\App\Http\Controllers\Cash\CashLedgerController::class,  'ledger']);
+    Route::get('/balances',          [\App\Http\Controllers\Cash\CashLedgerController::class,  'balances']);
+    Route::get('/balances/summary',  [\App\Http\Controllers\Cash\CashLedgerController::class,  'summary']);
+      // Internal transfers (create draft, post/unpost, list)
+  Route::prefix('internal-transfers')->group(function () {
+      Route::get('/',              [\App\Http\Controllers\Cash\InternalTransferController::class, 'index']);
+      Route::post('/',             [\App\Http\Controllers\Cash\InternalTransferController::class, 'store']);
+      Route::get('/{id}',          [\App\Http\Controllers\Cash\InternalTransferController::class, 'show'])->whereNumber('id');
+      Route::post('/{id}/post',    [\App\Http\Controllers\Cash\InternalTransferController::class, 'post'])->whereNumber('id');
+      Route::post('/{id}/unpost',  [\App\Http\Controllers\Cash\InternalTransferController::class, 'unpost'])->whereNumber('id');
+      Route::delete('/{id}',       [\App\Http\Controllers\Cash\InternalTransferController::class, 'destroy'])->whereNumber('id');
+  });
+
+});
+
+
 // ================== Quản lý vật tư (VT) ==================
 Route::prefix('vt')->group(function () {
     // Danh mục VT

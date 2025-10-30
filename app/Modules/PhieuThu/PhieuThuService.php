@@ -10,6 +10,8 @@ use App\Models\DonHang;
 use App\Models\PhieuThu;
 use Exception;
 use Illuminate\Support\Facades\DB;
+use App\Services\Cash\CashLedgerService;
+
 
 class PhieuThuService
 {
@@ -138,6 +140,11 @@ class PhieuThuService
                 return $result;
             }
 
+            // Mirror vào sổ quỹ (an toàn, idempotent)
+if ($result instanceof \App\Models\PhieuThu) {
+    app(\App\Services\Cash\CashLedgerService::class)->recordReceipt($result);
+}
+
             DB::commit();
 
             return $result;
@@ -184,6 +191,10 @@ class PhieuThuService
 
                 return $result;
             }
+
+// Gỡ bút toán sổ quỹ nếu đã ghi
+app(\App\Services\Cash\CashLedgerService::class)->removeReceipt($model);
+
 
             $model->delete();
             DB::commit();

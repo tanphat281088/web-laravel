@@ -10,6 +10,8 @@ use App\Models\PhieuChi;
 use App\Models\PhieuNhapKho;
 use Exception;
 use Illuminate\Support\Facades\DB;
+use App\Services\Cash\CashLedgerService;
+
 
 class PhieuChiService
 {
@@ -104,6 +106,12 @@ public function getById($id)
                 return $result;
             }
 
+// Mirror vào sổ quỹ (an toàn, idempotent)
+if ($result instanceof \App\Models\PhieuChi) {
+    app(\App\Services\Cash\CashLedgerService::class)->recordPayment($result);
+}
+
+
             DB::commit();
 
             return $result;
@@ -149,6 +157,10 @@ public function getById($id)
 
                 return $result;
             }
+
+// Gỡ bút toán sổ quỹ nếu đã ghi
+app(\App\Services\Cash\CashLedgerService::class)->removePayment($model);
+
 
             $model->delete();
             DB::commit();

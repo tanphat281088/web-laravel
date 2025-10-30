@@ -39,6 +39,16 @@ class Permission
         // (nếu bạn bật import tồn đầu)
         'api/vt/items/import-opening',
         // ======================================================
+        // ====== MỚI: mở toàn bộ API Quản lý dòng tiền (Cash) ======
+        // Dùng như prefix — vì shouldExcludeRoute() bên dưới có kiểm tra startsWith
+        'api/cash/accounts',
+        'api/cash/accounts/options',
+        'api/cash/aliases',
+        'api/cash/ledger',
+        'api/cash/balances',
+        'api/cash/balances/summary',
+        'api/cash/internal-transfers',
+        // ===========================================================
 
 
     ];
