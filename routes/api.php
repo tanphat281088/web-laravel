@@ -29,6 +29,10 @@ use App\Modules\CSKH\MemberPointController; // CSKH → Điểm thành viên
 // +++ CSKH · Điểm thành viên — Resync +++
 use App\Modules\CSKH\MemberPointMaintenanceController;
 
+use App\Modules\Utilities\Facebook\FbInboxController;
+use App\Modules\Utilities\Facebook\MessengerWebhookController;
+
+
 Route::prefix('cskh/points')->group(function () {
     Route::post('/resync', [MemberPointMaintenanceController::class, 'resync']); // rà soát & đồng bộ theo delta
     Route::post('/resync-by-order/{id}', [MemberPointMaintenanceController::class, 'resyncByOrder']); // đồng bộ 1 đơn (tùy chọn)
@@ -46,6 +50,16 @@ Route::post('/auth/verify-otp', [AuthController::class, 'verifyOTP'])->name('ver
 
 // Route công khai không cần xác thực
 Route::get('/quan-ly-ban-hang/xem-truoc-hoa-don/{id}', [\App\Modules\QuanLyBanHang\QuanLyBanHangController::class, 'xemTruocHoaDon']);
+
+// ================== (KHUNG) Facebook Messenger Webhook — PUBLIC (no auth) ==================
+Route::prefix('fb')->group(function () {
+    Route::get('/webhook',  [MessengerWebhookController::class, 'verify']);
+    Route::post('/webhook', [MessengerWebhookController::class, 'receive']);
+});
+// =================================================================================================
+
+
+
 Route::get('lich-su-import/download-file/{id}', [LichSuImportController::class, 'downloadFile']);
 
 Route::prefix('dashboard')->group(function () {
@@ -279,6 +293,21 @@ Route::group([
     Route::delete('/{id}', [\App\Modules\QuanLyBanHang\QuanLyBanHangController::class, 'destroy']);
     Route::post('/import-excel', [\App\Modules\QuanLyBanHang\QuanLyBanHangController::class, 'importExcel']);
   });
+
+
+// ================== (KHUNG) QUẢN LÝ TIỆN ÍCH → TƯ VẤN FACEBOOK ==================
+Route::prefix('utilities')->group(function () {
+    Route::prefix('fb')->group(function () {
+        Route::get   ('/health',                    [FbInboxController::class, 'health']);
+        Route::get   ('/conversations',             [FbInboxController::class, 'conversations']);
+        Route::get   ('/conversations/{id}',        [FbInboxController::class, 'show'])->whereNumber('id');
+        Route::post  ('/conversations/{id}/reply',  [FbInboxController::class, 'reply'])->whereNumber('id');
+        Route::post  ('/conversations/{id}/assign', [FbInboxController::class, 'assign'])->whereNumber('id');
+        Route::patch ('/conversations/{id}/status', [FbInboxController::class, 'status'])->whereNumber('id');
+    });
+});
+// ==================================================================================
+
 
   // ===== Báo cáo quản trị =====
   Route::prefix('bao-cao-quan-tri')->group(function () {

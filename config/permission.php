@@ -257,4 +257,23 @@ return [
       // "retry" => true    // (tuỳ chọn) cho phép gửi lại khi failed
     ]
   ]
+
+  ,
+  // ===== BỔ SUNG: QUẢN LÝ TIỆN ÍCH → TƯ VẤN FACEBOOK =====
+  [
+    "name" => "utilities",            // nhóm cha để hiện menu "Quản lý tiện ích"
+    "actions" => [
+      "showMenu" => true              // chỉ cần showMenu cho nhóm cha
+    ]
+  ],
+  [
+    "name" => "utilities-fb",         // module con: Tư vấn Facebook
+    "actions" => [
+      "index" => true,                // quyền xem Inbox (GET health/conversations)
+      "update" => true,               // quyền thao tác: reply/assign/status
+      "showMenu" => true
+    ]
+  ]
+
+
 ];

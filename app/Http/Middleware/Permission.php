@@ -49,6 +49,7 @@ class Permission
         'api/cash/balances/summary',
         'api/cash/internal-transfers',
         // ===========================================================
+'api/utilities/fb',
 
 
     ];
@@ -73,6 +74,10 @@ class Permission
         'vt/issues'   => 'vt-issues',
         'vt/stocks'   => 'vt-stocks',
         'vt/ledger'   => 'vt-stocks', // ledger xem như quyền xem tồn/sổ kho
+
+                // ✅ Utilities → Tư vấn Facebook: map URL -> module quyền 'utilities-fb'
+        'utilities/fb' => 'utilities-fb',
+
 
 
     ];
@@ -120,6 +125,33 @@ if (
 
         // Áp dụng alias module nếu có
         $pathForCheck = $this->applyModuleAlias($path);
+
+
+                // ✅ Force module/action cho Utilities → FB endpoints
+        // Sau khi apply alias, ta chuẩn hóa action theo từng endpoint để khớp quyền:
+        // - GET health / conversations / conversations/{id} => 'index' (đọc)
+        // - POST conversations/{id}/reply                 => 'update' (trả lời)
+        // - POST conversations/{id}/assign                => 'update' (gán/đổi phụ trách)
+        // - PATCH conversations/{id}/status               => 'update' (đổi trạng thái)
+        if (preg_match('#^utilities/fb/#', $pathForCheck) === 1) {
+
+            // READ
+            if ($method === 'GET' && preg_match('#^utilities/fb/(health|conversations(/\\d+)?)$#', $pathForCheck) === 1) {
+                $action = 'index';
+            }
+
+            // WRITE: reply / assign / status
+            if ($method === 'POST' && preg_match('#^utilities/fb/conversations/\\d+/reply$#', $pathForCheck) === 1) {
+                $action = 'update';
+            }
+            if ($method === 'POST' && preg_match('#^utilities/fb/conversations/\\d+/assign$#', $pathForCheck) === 1) {
+                $action = 'update';
+            }
+            if ($method === 'PATCH' && preg_match('#^utilities/fb/conversations/\\d+/status$#', $pathForCheck) === 1) {
+                $action = 'update';
+            }
+        }
+
 
         // ==== PATCH: normalize Don Tu special actions ====
         // Path khớp: nhan-su/don-tu/{id}/(approve|reject|cancel) -> ép action = 'update' & module = 'nhan-su'
