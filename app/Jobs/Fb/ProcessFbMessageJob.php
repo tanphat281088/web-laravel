@@ -17,6 +17,10 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Http;
+
+
 class ProcessFbMessageJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -62,115 +66,219 @@ class ProcessFbMessageJob implements ShouldQueue
         }
     }
 
-    private function processMessagingEvent(FbPage $page, array $event): void
-    {
-        // Lấy PSID & nội dung
-        $senderId    = (string)Arr::get($event, 'sender.id', '');
-        $recipientId = (string)Arr::get($event, 'recipient.id', '');
-        $timestampMs = (int)Arr::get($event, 'timestamp', now()->getTimestampMs());
+private function processMessagingEvent(FbPage $page, array $event): void
+{
+    // Lấy PSID & nội dung
+    $senderId    = (string)Arr::get($event, 'sender.id', '');
+    $recipientId = (string)Arr::get($event, 'recipient.id', '');
+    $timestampMs = (int)Arr::get($event, 'timestamp', now()->getTimestampMs());
 
-        // Chỉ xử lý message.text (MVP). Nếu sau này có attachments, postback… sẽ bổ sung.
-        $message     = Arr::get($event, 'message', []);
-        $mid         = (string)Arr::get($message, 'mid', '');
-        $text        = trim((string)Arr::get($message, 'text', ''));
+    // Chỉ xử lý message.text (MVP). Nếu sau này có attachments, postback… sẽ bổ sung.
+    $message     = Arr::get($event, 'message', []);
+    $mid         = (string)Arr::get($message, 'mid', '');
+    $text        = trim((string)Arr::get($message, 'text', ''));
 
-        if ($senderId === '' || $recipientId === '' || $mid === '') {
-            // Có thể là delivery/echo/postback — bỏ qua ở MVP
-            return;
+    if ($senderId === '' || $recipientId === '' || $mid === '') {
+        // Có thể là delivery/echo/postback — bỏ qua ở MVP
+        return;
+    }
+
+    // Idempotent: nếu mid đã tồn tại -> bỏ qua (Meta có thể retry)
+    $exists = FbMessage::query()->where('mid', $mid)->exists();
+    if ($exists) {
+        return;
+    }
+
+    // 1) Upsert FB User theo PSID
+    $fbUser = FbUser::query()->firstOrCreate(['psid' => $senderId], [
+        'name'          => null,
+        'locale'        => null,
+        'timezone'      => null,
+        'avatar'        => null,
+        'first_seen_at' => now(),
+    ]);
+
+    // 1.1) Lấy tên/ảnh đại diện từ Graph theo PSID nếu chưa có
+    $tokenEnc  = (string) ($page->token_enc ?? '');
+    $needFetch = (empty($fbUser->name) || empty($fbUser->avatar));
+
+    if ($tokenEnc !== '' && $needFetch) {
+        try {
+            $pageToken = Crypt::decryptString($tokenEnc);
+        } catch (\Throwable $e) {
+            $pageToken = null;
         }
 
-        // Idempotent: nếu mid đã tồn tại -> bỏ qua (Meta có thể retry)
-        $exists = FbMessage::query()->where('mid', $mid)->exists();
-        if ($exists) {
-            return;
-        }
-
-        // 1) Upsert FB User theo PSID
-        $fbUser = FbUser::query()->firstOrCreate(['psid' => $senderId], [
-            'name'          => null,
-            'locale'        => null,
-            'timezone'      => null,
-            'avatar'        => null,
-            'first_seen_at' => now(),
-        ]);
-
-        // 2) Tìm/ tạo Conversation trên page đó
-        $conv = FbConversation::query()
-            ->where('page_id', $page->id)
-            ->where('fb_user_id', $fbUser->id)
-            ->first();
-
-        if (!$conv) {
-            $conv = FbConversation::query()->create([
-                'page_id'             => $page->id,
-                'fb_user_id'          => $fbUser->id,
-                'assigned_user_id'    => null,
-                'status'              => 1, // open
-                'lang_primary'        => null, // sẽ suy luận phía dưới
-                'within_24h_until_at' => null,
-                'tags'                => [],
-                'last_message_at'     => null,
-            ]);
-        }
-
-        // 3) Dịch EN/khác -> VI (dùng TranslateService)
-        $createdAt  = Carbon::createFromTimestampMs($timestampMs)->tz(config('app.timezone'));
-        $ts         = new TranslateService();
-
-        $srcLang    = null;
-        $dstLang    = null;
-        $translated = null;
-
-        if ($text !== '') {
-            // Phát hiện ngôn ngữ
-            $srcLang = $ts->detect($text);
-            if ($srcLang === null) {
-                // fallback nhẹ nhàng nếu detect không ra
-                $srcLang = $this->fallbackDetect($text);
+        if (!empty($pageToken)) {
+            $headers   = ['Content-Type' => 'application/json'];
+            $appSecret = (string) env('FB_APP_SECRET', '');
+            if ($appSecret !== '') {
+                // appsecret_proof để tăng an toàn
+                $headers['X-Appsecret-Proof'] = hash_hmac('sha256', $pageToken, $appSecret);
             }
 
-            // cập nhật lang_primary nếu chưa có
-            if ($conv->lang_primary === null && $srcLang !== null) {
-                $conv->lang_primary = $srcLang;
-            }
+            $resp = Http::withHeaders($headers)->get(
+                'https://graph.facebook.com/v19.0/' . rawurlencode($senderId),
+                [
+                    'fields'       => 'name,first_name,last_name,profile_pic',
+                    'access_token' => $pageToken,
+                ]
+            );
 
-            // mục tiêu hiển thị cho NV là VI
-            $dstLang = 'vi';
+            if ($resp->ok()) {
+                $j      = $resp->json();
+                $name   = $j['name'] ?? trim(((string)($j['first_name'] ?? '')) . ' ' . ((string)($j['last_name'] ?? '')));
+                $avatar = $j['profile_pic'] ?? null;
 
-            if ($srcLang === 'vi') {
-                $translated = $text; // để UI luôn có [Dịch]
-            } else {
-                $translated = $ts->translate($text, $dstLang, $srcLang);
-                if ($translated === '' || $translated === null) {
-                    $translated = $text; // fallback hiển thị gốc
+                $dirty = false;
+                if ($name && empty($fbUser->name)) {
+                    $fbUser->name = $name;
+                    $dirty = true;
+                }
+                if ($avatar && empty($fbUser->avatar)) {
+                    $fbUser->avatar = $avatar;
+                    $dirty = true;
+                }
+                if ($dirty) {
+                    $fbUser->save();
                 }
             }
+        }
+    }
 
-            // Áp glossary sau dịch (nếu có)
-            $translated = $this->applyGlossary($translated ?? $text, 'vi');
+    // 1.2) Fallback: nếu vẫn chưa có tên/ảnh, lấy qua participants của page
+    if ($tokenEnc !== '' && (empty($fbUser->name) || empty($fbUser->avatar))) {
+        try {
+            // dùng lại $pageToken nếu có; nếu chưa, giải mã
+            $pageToken = isset($pageToken) ? $pageToken : Crypt::decryptString($tokenEnc);
+        } catch (\Throwable $e) {
+            $pageToken = null;
         }
 
-        // 4) Lưu message IN
-        $msg = new FbMessage();
-        $msg->conversation_id = $conv->id;
-        $msg->direction       = 'in';
-        $msg->mid             = $mid;
-        $msg->text_raw        = $text !== '' ? $text : null;
-        $msg->text_translated = $translated;
-        $msg->text_polished   = null;
-        $msg->src_lang        = $srcLang;
-        $msg->dst_lang        = $dstLang;
-        $msg->attachments     = null;
-        $msg->created_at      = $createdAt;
-        $msg->delivered_at    = null;
-        $msg->read_at         = null;
-        $msg->save();
+        if (!empty($pageToken)) {
+            $resp2 = Http::get(
+                'https://graph.facebook.com/v19.0/' . rawurlencode((string)$page->page_id) . '/conversations',
+                [
+                    'fields'       => 'participants{id,name,picture}',
+                    'limit'        => 50,
+                    'access_token' => $pageToken,
+                ]
+            );
 
-        // 5) Cập nhật trạng thái hội thoại (24h kể từ tin inbound)
-        $conv->last_message_at      = $createdAt;
-        $conv->within_24h_until_at  = (clone $createdAt)->addHours(24);
-        $conv->save();
+            if ($resp2->ok()) {
+                $payload = $resp2->json();
+                $list    = $payload['data'] ?? [];
+                $found   = null;
+
+                foreach ($list as $convRow) {
+                    $parts = $convRow['participants']['data'] ?? [];
+                    foreach ($parts as $p) {
+                        if (($p['id'] ?? '') === $senderId) {
+                            $found = $p;
+                            break 2;
+                        }
+                    }
+                }
+
+                if (is_array($found)) {
+                    $name   = $found['name'] ?? null;
+                    $avatar = $found['picture']['data']['url'] ?? null;
+
+                    $dirty = false;
+                    if ($name && empty($fbUser->name)) {
+                        $fbUser->name = $name;
+                        $dirty = true;
+                    }
+                    if ($avatar && empty($fbUser->avatar)) {
+                        $fbUser->avatar = $avatar;
+                        $dirty = true;
+                    }
+                    if ($dirty) {
+                        $fbUser->save();
+                    }
+                }
+            }
+        }
     }
+
+    // 2) Tìm/ tạo Conversation trên page đó
+    $conv = FbConversation::query()
+        ->where('page_id', $page->id)
+        ->where('fb_user_id', $fbUser->id)
+        ->first();
+
+    if (!$conv) {
+        $conv = FbConversation::query()->create([
+            'page_id'             => $page->id,
+            'fb_user_id'          => $fbUser->id,
+            'assigned_user_id'    => null,
+            'status'              => 1, // open
+            'lang_primary'        => null, // sẽ suy luận phía dưới
+            'within_24h_until_at' => null,
+            'tags'                => [],
+            'last_message_at'     => null,
+        ]);
+    }
+
+    // 3) Dịch EN/khác -> VI (dùng TranslateService)
+    $createdAt  = Carbon::createFromTimestampMs($timestampMs)->tz(config('app.timezone'));
+    $ts         = new TranslateService();
+
+    $srcLang    = null;
+    $dstLang    = null;
+    $translated = null;
+
+    if ($text !== '') {
+        // Phát hiện ngôn ngữ
+        $srcLang = $ts->detect($text);
+        if ($srcLang === null) {
+            // fallback nhẹ nhàng nếu detect không ra
+            $srcLang = $this->fallbackDetect($text);
+        }
+
+        // cập nhật lang_primary nếu chưa có
+        if ($conv->lang_primary === null && $srcLang !== null) {
+            $conv->lang_primary = $srcLang;
+        }
+
+        // mục tiêu hiển thị cho NV là VI
+        $dstLang = 'vi';
+
+        if ($srcLang === 'vi') {
+            $translated = $text; // để UI luôn có [Dịch]
+        } else {
+            $translated = $ts->translate($text, $dstLang, $srcLang);
+            if ($translated === '' || $translated === null) {
+                $translated = $text; // fallback hiển thị gốc
+            }
+        }
+
+        // Áp glossary sau dịch (nếu có)
+        $translated = $this->applyGlossary($translated ?? $text, 'vi');
+    }
+
+    // 4) Lưu message IN
+    $msg = new FbMessage();
+    $msg->conversation_id = $conv->id;
+    $msg->direction       = 'in';
+    $msg->mid             = $mid;
+    $msg->text_raw        = $text !== '' ? $text : null;
+    $msg->text_translated = $translated;
+    $msg->text_polished   = null;
+    $msg->src_lang        = $srcLang;
+    $msg->dst_lang        = $dstLang;
+    $msg->attachments     = null;
+    $msg->created_at      = $createdAt;
+    $msg->delivered_at    = null;
+    $msg->read_at         = null;
+    $msg->save();
+
+    // 5) Cập nhật trạng thái hội thoại (24h kể từ tin inbound)
+    $conv->last_message_at      = $createdAt;
+    $conv->within_24h_until_at  = (clone $createdAt)->addHours(24);
+    $conv->save();
+}
+
 
     /**
      * Fallback detect rất nhẹ (chỉ dùng khi TranslateService.detect trả null)

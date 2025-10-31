@@ -158,11 +158,25 @@ class TranslateService
                 $headers['OpenAI-Project'] = $this->openaiProject;
             }
 
-            $system = "You rewrite messages to be concise and {$tone} for customer support. Do not add emojis.";
+          $system = "You are an English copy editor for customer support.\n"
+  . "Goals: produce a clear, natural English reply that is concise and {$tone}.\n"
+  . "Rules (apply all):\n"
+  . "1) Keep the original meaning; never add new info.\n"
+  . "2) Fix grammar and punctuation; convert multiple exclamation marks to a single period.\n"
+  . "3) Use sentence case (capitalize the first word and proper nouns).\n"
+  . "4) Replace slang or casual fillers (\"ok/okay/don't worry\") with professional equivalents (e.g., \"Certainly.\" / \"Rest assured.\") depending on tone.\n"
+  . "5) Split run-on sentences; prefer 1–2 short sentences.\n"
+  . "6) Avoid emojis, ellipses, hashtags, and all-caps.\n"
+  . "7) Keep it polite and service-oriented.\n"
+  . "Output: return only the revised English text, no quotes, no explanations.";
+
             $resp = Http::timeout(20)
                 ->withHeaders($headers)
                 ->post('https://api.openai.com/v1/chat/completions', [
                     'model'    => $this->openaiModel,
+                    'temperature'        => 0.2,
+'frequency_penalty'  => 0.3,
+'presence_penalty'   => 0.0,
                     'messages' => [
                         ['role' => 'system', 'content' => $system],
                         ['role' => 'user',   'content' => "Please rephrase:\n\n" . $textEn],

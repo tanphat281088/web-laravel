@@ -88,7 +88,8 @@ class FbInboxController extends Controller
                 'tags'               => $c->tags ?: [],
                 'last_message_at'    => optional($c->last_message_at)->toDateTimeString(),
                 // Các trường tiện FE
-                'customer_name'      => optional($c->user)->name,
+               'customer_name' => optional($c->user)->name ?: ('Khách ' . substr((string)optional($c->user)->psid, -4)),
+
                 'latest_message_vi'  => $latest ? ($latest->text_translated ?? $latest->text_polished ?? $latest->text_raw) : null,
                 'latest_message_at'  => $latest ? optional($latest->created_at)->toDateTimeString() : null,
             ];
