@@ -7,6 +7,8 @@ use App\Models\FbMessage;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Carbon;
+use App\Jobs\Fb\SendFbReplyJob;
+
 
 class FbInboxController extends Controller
 {
@@ -144,53 +146,56 @@ class FbInboxController extends Controller
         ]);
     }
 
-    /**
-     * POST /api/utilities/fb/conversations/{id}/reply
-     * MVP: chỉ lưu 1 message OUTBOUND vào DB, chưa gửi Facebook.
-     * Body: { text_vi: string }
-     */
-    public function reply(int $id, Request $request)
-    {
-        $conv = FbConversation::query()->find($id);
-        if (!$conv) {
-            return response()->json(['success' => false, 'message' => 'Conversation not found'], 404);
-        }
-
-        $textVi = trim((string) $request->input('text_vi', ''));
-        if ($textVi === '') {
-            return response()->json(['success' => false, 'message' => 'text_vi is required'], 422);
-        }
-
-        // Kiểm tra 24h window (nếu có set)
-        $within24h = $conv->within_24h_until_at
-            ? Carbon::parse($conv->within_24h_until_at)->isFuture()
-            : true;
-        if (!$within24h) {
-            return response()->json(['success' => false, 'message' => 'Outside 24h window'], 400);
-        }
-
-        // Lưu outbound message (gốc: VI). Chưa dịch/gửi.
-        $msg = new FbMessage();
-        $msg->conversation_id = $conv->id;
-        $msg->direction       = 'out';
-        $msg->text_raw        = $textVi;     // gốc (VI)
-        $msg->src_lang        = 'vi';
-        $msg->dst_lang        = null;
-        $msg->attachments     = null;
-        $msg->save();
-
-        // Cập nhật last_message_at
-        $conv->last_message_at = now();
-        $conv->save();
-
-        return response()->json([
-            'success'         => true,
-            'conversation_id' => $conv->id,
-            'sent'            => false, // chưa gửi FB
-            'text_vi'         => $textVi,
-            'note'            => 'saved to DB (placeholder, not sent)',
-        ]);
+ /**
+ * POST /api/utilities/fb/conversations/{id}/reply
+ * Body: { text_vi: string, polish?: bool, tone?: string }
+ */
+public function reply(int $id, Request $request)
+{
+    $conv = \App\Models\FbConversation::query()->find($id);
+    if (!$conv) {
+        return response()->json(['success' => false, 'message' => 'Conversation not found'], 404);
     }
+
+    $textVi = trim((string) $request->input('text_vi', ''));
+    if ($textVi === '') {
+        return response()->json(['success' => false, 'message' => 'text_vi is required'], 422);
+    }
+
+    // Chặn ngoài 24h (Messenger policy)
+    $within24h = $conv->within_24h_until_at
+        ? \Illuminate\Support\Carbon::parse($conv->within_24h_until_at)->isFuture()
+        : true;
+    if (!$within24h) {
+        return response()->json(['success' => false, 'message' => 'Outside 24h window'], 400);
+    }
+
+    // Lưu outbound gốc (VI)
+    $msg = new \App\Models\FbMessage();
+    $msg->conversation_id = $conv->id;
+    $msg->direction       = 'out';
+    $msg->text_raw        = $textVi;
+    $msg->src_lang        = 'vi';
+    $msg->dst_lang        = null;
+    $msg->attachments     = null;
+    $msg->save();
+
+    // Cập nhật mốc last_message_at
+    $conv->last_message_at = now();
+    $conv->save();
+
+    // ĐẨY JOB GỬI FB (dịch VI→EN + polish nếu bật, gửi Graph, cập nhật mid/delivered_at)
+    dispatch(new SendFbReplyJob($conv->id, $msg->id));
+
+    return response()->json([
+        'success'         => true,
+        'conversation_id' => $conv->id,
+        'sent'            => true,                 // đã queue để gửi
+        'text_vi'         => $textVi,
+        'note'            => 'queued to send via SendFbReplyJob',
+    ]);
+}
+
 
     /**
      * POST /api/utilities/fb/conversations/{id}/assign
