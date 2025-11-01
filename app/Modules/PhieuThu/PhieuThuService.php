@@ -116,44 +116,63 @@ class PhieuThuService
     /**
      * Tạo mới dữ liệu
      */
-    public function create(array $data)
-    {
-        try {
-            DB::beginTransaction();
+public function create(array $data)
+{
+    try {
+        DB::beginTransaction();
 
-            // MỚI: chuẩn hoá loại để chấp nhận cả chuỗi 'TAI_CHINH'
-            if (isset($data['loai_phieu_thu'])) {
-                $data['loai_phieu_thu'] = $this->normalizeLoai($data['loai_phieu_thu']);
+        // MỚI: chuẩn hoá loại để chấp nhận cả chuỗi 'TAI_CHINH'
+        if (isset($data['loai_phieu_thu'])) {
+            $data['loai_phieu_thu'] = $this->normalizeLoai($data['loai_phieu_thu']);
+        }
+
+        /* ======================= HYDRATE CK THEO TÀI KHOẢN ======================= 
+           Nếu là chuyển khoản (pt=2) và có tai_khoan_id, tự điền ngân_hàng/số_tk
+           từ bảng tai_khoan_tiens khi 2 field đang rỗng. Không đè dữ liệu FE.   */
+        $data['phuong_thuc_thanh_toan'] = (int)($data['phuong_thuc_thanh_toan'] ?? 0);
+        if ($data['phuong_thuc_thanh_toan'] === 2) { // 2 = Chuyển khoản
+            $tkId = (int)($data['tai_khoan_id'] ?? 0);
+            if ($tkId > 0) {
+                $tk = DB::table('tai_khoan_tiens')
+                        ->select('ngan_hang','so_tai_khoan')
+                        ->where('id', $tkId)
+                        ->first();
+                if ($tk) {
+                    $data['ngan_hang']    = $data['ngan_hang']    ?? (string)($tk->ngan_hang ?? '');
+                    $data['so_tai_khoan'] = $data['so_tai_khoan'] ?? (string)($tk->so_tai_khoan ?? '');
+                }
             }
+        }
+        /* ===================== HẾT KHỐI HYDRATE CK THEO TÀI KHOẢN ===================== */
 
-            $result = match ($data['loai_phieu_thu']) {
-                1 => $this->xuLyThanhToanDonHang($data),
-                2 => $this->xuLyThanhToanNhieuDonHang($data),
-                3 => $this->xuLyThanhToanCongNoKhachHang($data),
-                4 => $this->xuLyThuKhac($data),
-                5 => $this->xuLyThuTaiChinh($data), // MỚI: loại tài chính
-                default => throw new Exception('Loại phiếu thu không hợp lệ')
-            };
+        $result = match ($data['loai_phieu_thu']) {
+            1 => $this->xuLyThanhToanDonHang($data),
+            2 => $this->xuLyThanhToanNhieuDonHang($data),
+            3 => $this->xuLyThanhToanCongNoKhachHang($data),
+            4 => $this->xuLyThuKhac($data),
+            5 => $this->xuLyThuTaiChinh($data), // MỚI: loại tài chính
+            default => throw new Exception('Loại phiếu thu không hợp lệ')
+        };
 
-            if ($result instanceof \App\Class\CustomResponse) {
-                DB::rollBack();
-                return $result;
-            }
+        if ($result instanceof \App\Class\CustomResponse) {
+            DB::rollBack();
+            return $result;
+        }
 
-            // Mirror vào sổ quỹ (an toàn, idempotent)
-if ($result instanceof \App\Models\PhieuThu) {
-    app(\App\Services\Cash\CashLedgerService::class)->recordReceipt($result);
+        // Mirror vào sổ quỹ (an toàn, idempotent)
+        if ($result instanceof \App\Models\PhieuThu) {
+            app(\App\Services\Cash\CashLedgerService::class)->recordReceipt($result);
+        }
+
+        DB::commit();
+        return $result;
+
+    } catch (Exception $e) {
+        DB::rollBack();
+        return CustomResponse::error($e->getMessage());
+    }
 }
 
-            DB::commit();
-
-            return $result;
-        } catch (Exception $e) {
-            DB::rollBack();
-
-            return CustomResponse::error($e->getMessage());
-        }
-    }
 
     /**
      * Cập nhật dữ liệu

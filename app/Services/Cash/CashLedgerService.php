@@ -82,13 +82,16 @@ class CashLedgerService
         $defaultCashId = $this->ensureDefaultCashAccount();
         $unknownId     = $this->ensureUnknownAccount();
 
-        $accId = $this->resolveAccountId(
-            (int)($phieuChi->phuong_thuc_thanh_toan ?? 0),
-            (string)($phieuChi->ngan_hang ?? ''),
-            (string)($phieuChi->so_tai_khoan ?? ''),
-            $defaultCashId,
-            $unknownId
-        );
+$accId = !empty($phieuChi->tai_khoan_id)
+    ? (int) $phieuChi->tai_khoan_id
+    : $this->resolveAccountId(
+        (int)($phieuChi->phuong_thuc_thanh_toan ?? 0),
+        (string)($phieuChi->ngan_hang ?? ''),
+        (string)($phieuChi->so_tai_khoan ?? ''),
+        $defaultCashId,
+        $unknownId
+    );
+
 
         DB::table('so_quy_entries')->insert([
             'tai_khoan_id' => $accId,

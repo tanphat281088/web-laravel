@@ -31,6 +31,7 @@ class UpdatePhieuChiRequest extends FormRequest
       'so_tien' => 'required|integer',
       'nguoi_nhan' => 'nullable|string',
       'phuong_thuc_thanh_toan' => 'required|integer|in:1,2',
+      'tai_khoan_id'           => 'nullable|integer|exists:tai_khoan_tiens,id', // ⬅️ THÊM DÒNG NÀY
       'so_tai_khoan' => 'nullable|string',
       'ngan_hang' => 'nullable|string',
       'ly_do_chi' => 'nullable|string',

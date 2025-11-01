@@ -35,6 +35,7 @@ class CreatePhieuThuRequest extends FormRequest
       'so_tien' => 'required|integer|min:0',
       'nguoi_tra' => 'nullable|string|max:255',
       'phuong_thuc_thanh_toan' => 'required|in:1,2',
+      'tai_khoan_id'           => 'nullable|integer|exists:tai_khoan_tiens,id', // ⬅️ THÊM DÒNG NÀY
       'so_tai_khoan' => 'nullable|string|max:255',
       'ngan_hang' => 'nullable|string|max:255',
       'ly_do_thu' => 'nullable|string',

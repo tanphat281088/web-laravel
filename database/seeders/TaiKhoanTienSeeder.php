@@ -108,11 +108,28 @@ class TaiKhoanTienSeeder extends Seeder
                 'created_at'       => $now,
                 'updated_at'       => $now,
             ],
+
+            // ⭐ Thêm mới: THẺ TÍN DỤNG - VÕ THỊ ÁNH TUYẾT (MB)
+            [
+                'ma_tk'            => 'ANH_TUYET_CC',                      // unique key
+                'ten_tk'           => 'THẺ TÍN DỤNG - VÕ THỊ ÁNH TUYẾT',
+                'loai'             => 'bank',                               // giữ 'bank' để lọt filter của API/UI hiện có
+                'so_tai_khoan'     => 'CC-2203',                            // gợi ý: hiển thị 4 số cuối
+                'ngan_hang'        => 'MB',
+                'is_default_cash'  => false,
+                'is_active'        => true,
+                'opening_balance'  => 0,
+                'opening_date'     => null,
+                'ghi_chu'          => 'Credit Card MBBank',
+                'created_at'       => $now,
+                'updated_at'       => $now,
+            ],
         ];
 
+        // ❗ Fix nhỏ: uniqueBy phải là ['ma_tk'] (dòng cũ có khoảng trắng và sai cú pháp)
         DB::table('tai_khoan_tiens')->upsert(
             $accounts,
-            [' ma_tk' => 'ma_tk'], // dùng khóa duy nhất theo ma_tk (đảm bảo đúng key)
+          [' ma_tk' => 'ma_tk'],  // ❌ sai
             [
                 'ten_tk','loai','so_tai_khoan','ngan_hang','is_default_cash',
                 'is_active','opening_balance','opening_date','ghi_chu','updated_at'
@@ -121,7 +138,7 @@ class TaiKhoanTienSeeder extends Seeder
 
         // Lấy map id theo ma_tk để tạo alias an toàn
         $map = DB::table('tai_khoan_tiens')
-            ->whereIn('ma_tk', ['CASH','COMPANY','ZLP','PHAT','ANH_TUYET','HONG_TUYET'])
+            ->whereIn('ma_tk', ['CASH','COMPANY','ZLP','PHAT','ANH_TUYET','HONG_TUYET','ANH_TUYET_CC'])
             ->pluck('id', 'ma_tk');
 
         // -------------------------------
@@ -194,6 +211,34 @@ class TaiKhoanTienSeeder extends Seeder
                 'updated_at'      => $now,
             ];
         }
+
+        // ⭐ Thêm alias cho THẺ TÍN DỤNG - ÁNH TUYẾT (gợi ý match theo 4 số cuối)
+        foreach (['MB','MBBank'] as $bank) {
+            $aliases[] = [
+                'tai_khoan_id'    => $map['ANH_TUYET_CC'] ?? null,
+                'pattern_bank'    => $bank,
+                'pattern_account' => '2203',                 // 4 số cuối in sao kê
+                'pattern_note'    => 'VO THI ANH TUYET',
+                'is_active'       => true,
+                'created_at'      => $now,
+                'updated_at'      => $now,
+            ];
+        }
+
+
+        // ⭐ Bổ sung alias dạng “CC-2203” (cover trường hợp phiếu lưu CC-2203)
+foreach (['MB','MBBank'] as $bank) {
+    $aliases[] = [
+        'tai_khoan_id'    => $map['ANH_TUYET_CC'] ?? null,
+        'pattern_bank'    => $bank,
+        'pattern_account' => 'CC-2203',            // <— thêm alias exact này
+        'pattern_note'    => 'VO THI ANH TUYET',
+        'is_active'       => true,
+        'created_at'      => $now,
+        'updated_at'      => $now,
+    ];
+}
+
 
         // Bỏ alias không có id
         $aliases = array_values(array_filter($aliases, fn ($a) => !empty($a['tai_khoan_id'])));

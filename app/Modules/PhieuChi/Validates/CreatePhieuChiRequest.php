@@ -27,6 +27,7 @@ class CreatePhieuChiRequest extends FormRequest
       'ngay_chi'               => 'required|date',
       'loai_phieu_chi'         => 'required|integer|in:1,2,3,4', // 1=PNK, 2=Công nợ NCC, 3=Chi khác, 4=Nhiều PNK
 
+
       // Theo ngữ cảnh
       'nha_cung_cap_id'        => 'nullable|integer',
       'phieu_nhap_kho_ids'     => 'nullable|array',
@@ -36,6 +37,7 @@ class CreatePhieuChiRequest extends FormRequest
       'so_tien'                => 'required|integer',
       'nguoi_nhan'             => 'nullable|string',
       'phuong_thuc_thanh_toan' => 'required|integer|in:1,2', // 1=tiền mặt, 2=chuyển khoản
+      'tai_khoan_id'           => 'nullable|integer|exists:tai_khoan_tiens,id', // ⬅️ THÊM DÒNG NÀY
       'so_tai_khoan'           => 'nullable|string',
       'ngan_hang'              => 'nullable|string',
       'ly_do_chi'              => 'nullable|string',

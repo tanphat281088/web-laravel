@@ -92,6 +92,32 @@ public function getById($id)
         try {
             DB::beginTransaction();
 
+/* ======================= HYDRATE CK THEO TÀI KHOẢN =======================
+   Nếu là chuyển khoản (pt=2) và có tai_khoan_id, tự điền ngân_hàng/số_tk
+   từ bảng tai_khoan_tiens khi 2 field đang rỗng. Không đè dữ liệu FE.
+   Đồng thời KHÔNG lưu tai_khoan_id vào DB (bảng phieu_chis không có cột này),
+   nhưng giữ lại để truyền cho ledger.                                       */
+$tkForLedger = null;
+$data['phuong_thuc_thanh_toan'] = (int)($data['phuong_thuc_thanh_toan'] ?? 0);
+if ($data['phuong_thuc_thanh_toan'] === 2) { // 2 = Chuyển khoản
+    $tkId = (int)($data['tai_khoan_id'] ?? 0);
+    if ($tkId > 0) {
+        $tkForLedger = $tkId; // giữ lại cho ledger
+        $tk = DB::table('tai_khoan_tiens')
+                ->select('ngan_hang','so_tai_khoan')
+                ->where('id', $tkId)
+                ->first();
+        if ($tk) {
+            $data['ngan_hang']    = $data['ngan_hang']    ?? (string)($tk->ngan_hang ?? '');
+            $data['so_tai_khoan'] = $data['so_tai_khoan'] ?? (string)($tk->so_tai_khoan ?? '');
+        }
+    }
+    // ❗ Không lưu tai_khoan_id vào phieu_chis vì bảng không có cột này
+    unset($data['tai_khoan_id']);
+}
+/* ===================== HẾT HYDRATE CK THEO TÀI KHOẢN ===================== */
+
+
             $result = match ($data['loai_phieu_chi']) {
                 1 => $this->xuLyChiThanhToanPhieuNhapKho($data),
                 2 => $this->xuLyChiThanhToanCongNo($data),
@@ -107,7 +133,12 @@ public function getById($id)
             }
 
 // Mirror vào sổ quỹ (an toàn, idempotent)
+// Mirror vào sổ quỹ (an toàn, idempotent)
 if ($result instanceof \App\Models\PhieuChi) {
+    // Gắn tạm tai_khoan_id chỉ để ledger map đúng (không save vào DB)
+    if (!empty($tkForLedger)) {
+        $result->setAttribute('tai_khoan_id', (int)$tkForLedger);
+    }
     app(\App\Services\Cash\CashLedgerService::class)->recordPayment($result);
 }
 
