@@ -130,7 +130,8 @@
       <tbody>
         <tr>
           <td><strong>01. Doanh thu bán hàng và cung cấp dịch vụ</strong></td>
-          <td class="muted">Tổng doanh thu ghi nhận theo phiếu thu trong kỳ.</td>
+    <td class="muted">Tổng giá trị các đơn hàng đã giao và đã hủy trong kỳ.</td>
+
           <td class="right">{{ $fmt($s['01_doanh_thu_ban_hang'] ?? 0) }}</td>
           <td class="right"><strong>100%</strong></td>
         </tr>

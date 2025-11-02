@@ -183,11 +183,38 @@ if ($daTT <= 0) {
             $giamGia = (int)($data['giam_gia'] ?? 0);
             $chiPhi  = (int)($data['chi_phi'] ?? 0);
 
-            // Không dùng VAT: tổng cần thanh toán = tổng hàng - giảm giá + chi phí (kẹp >= 0)
-            $tongTienCanThanhToan = max(0, (int)$tongTienHang - $giamGia + $chiPhi);
+// ===== VAT-AWARE TOTALS (TƯƠNG THÍCH NGƯỢC) =====
+$taxMode = (int)($data['tax_mode'] ?? 0);
+$vatRate = array_key_exists('vat_rate', $data) ? (float)$data['vat_rate'] : null;
 
-            // Chuẩn hoá theo loại thanh toán (kẹp an toàn)
-            $this->normalizePayments($data, $tongTienCanThanhToan);
+// 1) Subtotal = tổng hàng - giảm giá + chi phí (kẹp >= 0)
+$subtotal = max(0, (int)$tongTienHang - $giamGia + $chiPhi);
+
+// 2) VAT (chỉ khi tax_mode=1 & có vat_rate)
+if ($taxMode === 1 && $vatRate !== null) {
+    $vatAmount  = (int) round($subtotal * $vatRate / 100, 0); // làm tròn đồng
+    $grandTotal = $subtotal + $vatAmount;
+} else {
+    // giữ hành vi cũ: không thuế
+    $taxMode   = 0;
+    $vatRate   = null;
+    $vatAmount = null;    // để NULL -> tương thích ngược
+    $grandTotal = $subtotal;
+}
+
+// 3) legacy field vẫn dùng: gán tổng cần thanh toán = grand_total
+$tongTienCanThanhToan = (int) $grandTotal;
+
+// Chuẩn hoá thanh toán theo tổng mới
+$this->normalizePayments($data, $tongTienCanThanhToan);
+
+// 4) Ghi vào $data cho DonHang (NULL khi không thuế để không phá report cũ)
+$data['tax_mode']   = $taxMode;
+$data['vat_rate']   = $vatRate;
+$data['subtotal']   = ($taxMode === 1) ? (int)$subtotal : null;
+$data['vat_amount'] = ($taxMode === 1) ? (int)$vatAmount : null;
+$data['grand_total']= ($taxMode === 1) ? (int)$grandTotal : null;
+
 
             // ✅ Chuẩn hoá thông tin người nhận (Tên/SĐT/Ngày giờ nhận)
             $this->normalizeRecipientFields($data);
@@ -294,11 +321,38 @@ if (!array_key_exists('trang_thai_don_hang', $data) || $data['trang_thai_don_han
             $giamGia = (int)($data['giam_gia'] ?? 0);
             $chiPhi  = (int)($data['chi_phi'] ?? 0);
 
-            // Không dùng VAT
-            $tongTienCanThanhToan = max(0, (int)$tongTienHang - $giamGia + $chiPhi);
+// ===== VAT-AWARE TOTALS (TƯƠNG THÍCH NGƯỢC) =====
+$taxMode = (int)($data['tax_mode'] ?? 0);
+$vatRate = array_key_exists('vat_rate', $data) ? (float)$data['vat_rate'] : null;
 
-            // Chuẩn hoá theo loại thanh toán (kẹp an toàn)
-            $this->normalizePayments($data, $tongTienCanThanhToan);
+// 1) Subtotal = tổng hàng - giảm giá + chi phí (kẹp >= 0)
+$subtotal = max(0, (int)$tongTienHang - $giamGia + $chiPhi);
+
+// 2) VAT (chỉ khi tax_mode=1 & có vat_rate)
+if ($taxMode === 1 && $vatRate !== null) {
+    $vatAmount  = (int) round($subtotal * $vatRate / 100, 0); // làm tròn đồng
+    $grandTotal = $subtotal + $vatAmount;
+} else {
+    // giữ hành vi cũ: không thuế
+    $taxMode   = 0;
+    $vatRate   = null;
+    $vatAmount = null;    // để NULL -> tương thích ngược
+    $grandTotal = $subtotal;
+}
+
+// 3) legacy field vẫn dùng: gán tổng cần thanh toán = grand_total
+$tongTienCanThanhToan = (int) $grandTotal;
+
+// Chuẩn hoá thanh toán theo tổng mới
+$this->normalizePayments($data, $tongTienCanThanhToan);
+
+// 4) Ghi vào $data cho DonHang (NULL khi không thuế để không phá report cũ)
+$data['tax_mode']   = $taxMode;
+$data['vat_rate']   = $vatRate;
+$data['subtotal']   = ($taxMode === 1) ? (int)$subtotal : null;
+$data['vat_amount'] = ($taxMode === 1) ? (int)$vatAmount : null;
+$data['grand_total']= ($taxMode === 1) ? (int)$grandTotal : null;
+
 
             // ✅ Chuẩn hoá thông tin người nhận (Tên/SĐT/Ngày giờ nhận)
             $this->normalizeRecipientFields($data);

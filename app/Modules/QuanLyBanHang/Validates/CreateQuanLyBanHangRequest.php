@@ -60,6 +60,15 @@ class CreateQuanLyBanHangRequest extends FormRequest
         Rule::requiredIf(fn () => (int)$this->input('loai_thanh_toan') === 1),
       ],
 
+      // ===== Thuế (NEW) =====
+      'tax_mode'  => ['sometimes', 'integer', Rule::in([0, 1])],   // 0 = không thuế (mặc định), 1 = VAT
+      'vat_rate'  => [
+        'sometimes', 'nullable', 'numeric', 'min:0', 'max:20',
+        Rule::requiredIf(fn () => (int)$this->input('tax_mode') === 1),
+      ],
+
+
+
       // ===== Danh sách sản phẩm =====
       'danh_sach_san_pham'                  => ['required', 'array', 'min:1'],
       'danh_sach_san_pham.*.san_pham_id'    => ['required', 'integer', 'exists:san_phams,id'],
@@ -157,6 +166,16 @@ class CreateQuanLyBanHangRequest extends FormRequest
       // Khác
       'ghi_chu.string' => 'Ghi chú phải là chuỗi',
       'ghi_chu.max'    => 'Ghi chú không được vượt quá 255 ký tự',
+
+
+            // Thuế
+      'tax_mode.integer' => 'Chế độ thuế phải là số',
+      'tax_mode.in'      => 'Chế độ thuế không hợp lệ',
+      'vat_rate.required_if' => 'Vui lòng nhập VAT (%) khi chọn Có thuế',
+      'vat_rate.numeric'     => 'VAT (%) phải là số',
+      'vat_rate.min'         => 'VAT (%) không được âm',
+      'vat_rate.max'         => 'VAT (%) không vượt quá 20%',
+
     ];
   }
 }

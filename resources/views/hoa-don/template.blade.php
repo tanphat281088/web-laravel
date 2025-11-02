@@ -254,10 +254,29 @@
 
     <!-- TỔNG KẾT -->
     @php
+      // ====== Legacy base totals ======
       $tongHang  = (int)($donHang->tong_tien_hang ?? 0);
       $giamGia   = (int)($donHang->giam_gia ?? 0);
       $chiPhi    = (int)($donHang->chi_phi ?? 0);
-      $tongCanTT = (int)($donHang->tong_tien_can_thanh_toan ?? max(0, $tongHang - $giamGia + $chiPhi));
+
+      // ====== Thuế (tương thích ngược) ======
+      $taxMode   = (int)($donHang->tax_mode ?? 0);
+      $vatRate   = (float)($donHang->vat_rate ?? 0);
+
+      // Subtotal = tổng hàng - giảm giá + chi phí
+      $subtotal  = max(0, (int)($donHang->subtotal ?? ($tongHang - $giamGia + $chiPhi)));
+
+      // VAT & Grand total chỉ khi tax_mode=1; nếu thiếu dữ liệu, tự suy diễn an toàn
+      if ($taxMode === 1) {
+        $vatAmount  = (int)($donHang->vat_amount ?? round($subtotal * $vatRate / 100, 0));
+        $grandTotal = (int)($donHang->grand_total ?? ($subtotal + $vatAmount));
+      } else {
+        $vatAmount  = 0;
+        $grandTotal = $subtotal; // hành vi cũ
+      }
+
+      // Tổng cần thanh toán dùng field legacy nếu có; nếu không, lấy theo grandTotal đã suy diễn
+      $tongCanTT = (int)($donHang->tong_tien_can_thanh_toan ?? $grandTotal);
       $daTT      = (int)($donHang->so_tien_da_thanh_toan ?? 0);
       $conLai    = max(0, $tongCanTT - $daTT);
     @endphp
@@ -266,7 +285,17 @@
       <div class="total-row"><span>Tổng tiền hàng:</span><span>{{ number_format($tongHang, 0, ',', '.') }}đ</span></div>
       <div class="total-row"><span>Giảm giá:</span><span>-{{ number_format($giamGia, 0, ',', '.') }}đ</span></div>
       <div class="total-row"><span>Chi phí khác:</span><span>{{ number_format($chiPhi, 0, ',', '.') }}đ</span></div>
-      <div class="total-row final"><span>Tổng tiền cần thanh toán:</span><span>{{ number_format($tongCanTT, 0, ',', '.') }}đ</span></div>
+
+      @if ($taxMode === 1)
+        {{-- Khi CÓ THUẾ: hiện Tạm tính / VAT / Tổng thanh toán --}}
+        <div class="total-row"><span>Tạm tính:</span><span>{{ number_format($subtotal, 0, ',', '.') }}đ</span></div>
+        <div class="total-row"><span>VAT {{ rtrim(rtrim(number_format($vatRate, 2, '.', ''), '0'), '.') }}%:</span><span>{{ number_format($vatAmount, 0, ',', '.') }}đ</span></div>
+        <div class="total-row final"><span>Tổng tiền cần thanh toán:</span><span>{{ number_format($grandTotal, 0, ',', '.') }}đ</span></div>
+      @else
+        {{-- Khi KHÔNG THUẾ: giữ nguyên hành vi cũ, không hiện bất kỳ dòng thuế nào --}}
+        <div class="total-row final"><span>Tổng tiền cần thanh toán:</span><span>{{ number_format($tongCanTT, 0, ',', '.') }}đ</span></div>
+      @endif
+
       <div class="total-row"><span>Số tiền đã thanh toán:</span><span>{{ number_format($daTT, 0, ',', '.') }}đ</span></div>
       <div class="total-row"><span>Còn lại:</span><span>{{ number_format($conLai, 0, ',', '.') }}đ</span></div>
     </div>

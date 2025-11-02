@@ -37,6 +37,7 @@ class CashAccountController extends Controller
     {
         $rows = TaiKhoanTien::query()
             ->when($request->filled('active'), fn($qq) => $qq->where('is_active', (int)$request->get('active') === 1))
+            ->where('ma_tk', '!=', 'UNKNOWN')  
             ->orderBy('loai')->orderBy('ten_tk')
             ->get()
             ->map(function ($r) {
@@ -61,14 +62,6 @@ class CashAccountController extends Controller
                 ];
             });
 
-// Ẩn 'Tiền mặt' (loai = cash) và các dòng có chữ 'chưa gắn' trong nhãn
-$rows = $rows->filter(function ($r) {
-    $loai  = $r['extra']['loai'] ?? null;
-    $label = strtolower($r['label'] ?? '');
-    if ($loai === 'cash') return false;                 // ẩn Tiền mặt
-    if (str_contains($label, 'chưa gắn')) return false; // ẩn 'Chưa gắn tài khoản'
-    return true;
-});
 
 
         return CustomResponse::success($rows->values());

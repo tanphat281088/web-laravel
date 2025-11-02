@@ -36,20 +36,14 @@ class BaoCaoQuanTriController extends Controller
             $thuTypeCol = 'loai_phieu_thu';
         }
 
-        // 01. Doanh thu bán hàng (không tính phiếu thu tài chính)
-        $dtQuery01 = DB::table('phieu_thus')
-            ->when($thuTypeCol, function ($q) use ($thuTypeCol) {
-                // Loại trừ cả chuỗi 'TAI_CHINH' và số 5
-                $q->where(function ($qq) use ($thuTypeCol) {
-                    $qq->where($thuTypeCol, '!=', 'TAI_CHINH')
-                       ->where($thuTypeCol, '!=', 5);
-                });
-            })
-            ->when($this->columnExists('phieu_thus','ngay_thu'),
-                fn($q)=>$dateFilter($q,'ngay_thu'),
-                fn($q)=>$dateFilter($q,'created_at')
-            );
-        $v01 = (int) $dtQuery01->sum('so_tien');
+// 01. Doanh thu bán hàng — THEO ĐƠN HÀNG ĐÃ GIAO (trang_thai_don_hang = 2; ngày = nguoi_nhan_thoi_gian)
+$v01 = (int) DB::table('don_hangs')
+    ->whereIn('trang_thai_don_hang', [2, 3])
+
+    ->when($from, fn($q) => $q->whereDate('nguoi_nhan_thoi_gian', '>=', $from))
+    ->when($to,   fn($q) => $q->whereDate('nguoi_nhan_thoi_gian', '<=', $to))
+    ->sum('tong_tien_can_thanh_toan');
+
 
         // 04. Doanh thu HĐ tài chính = tổng phiếu thu loại 'TAI_CHINH' hoặc 5
         $dtQuery04 = DB::table('phieu_thus')
@@ -117,17 +111,15 @@ class BaoCaoQuanTriController extends Controller
         if ($groupBy === 'month') {
             // Tháng cho phiếu thu (tách 01 & 04)
             $hasNgayThu = $this->columnExists('phieu_thus','ngay_thu');
+// Series 01 — ĐƠN HÀNG ĐÃ GIAO theo tháng (group by DATE_FORMAT(nguoi_nhan_thoi_gian,'%Y-%m'))
+$dtSeries01 = DB::table('don_hangs')
+->whereIn('trang_thai_don_hang', [2, 3])
 
-            $dtSeries01 = DB::table('phieu_thus')
-                ->when($thuTypeCol, function ($q) use ($thuTypeCol) {
-                    $q->where(function ($qq) use ($thuTypeCol) {
-                        $qq->where($thuTypeCol,'!=','TAI_CHINH')
-                           ->where($thuTypeCol,'!=',5);
-                    });
-                })
-                ->when($hasNgayThu, fn($q)=>$dateFilter($q,'ngay_thu'), fn($q)=>$dateFilter($q,'created_at'))
-                ->selectRaw(($hasNgayThu ? "DATE_FORMAT(ngay_thu,'%Y-%m')" : "DATE_FORMAT(created_at,'%Y-%m')") . " as ym, SUM(so_tien) as total")
-                ->groupBy('ym')->pluck('total','ym');
+    ->when($from, fn($q)=>$q->whereDate('nguoi_nhan_thoi_gian','>=',$from))
+    ->when($to,   fn($q)=>$q->whereDate('nguoi_nhan_thoi_gian','<=',$to))
+    ->selectRaw("DATE_FORMAT(nguoi_nhan_thoi_gian,'%Y-%m') as ym, SUM(tong_tien_can_thanh_toan) as total")
+    ->groupBy('ym')->pluck('total','ym');
+
 
             $dtSeries04 = DB::table('phieu_thus')
                 ->when(
@@ -217,50 +209,32 @@ class BaoCaoQuanTriController extends Controller
             return CustomResponse::error('Tham số line không hợp lệ (chỉ nhận 1,2,5,6,7,8,10)', 422);
         }
 
-        if ($line === 1) {
-            // Chi tiết doanh thu bán hàng (01) — loại trừ phiếu thu tài chính
-            $hasNgayThu = false;
-            try {
-                $hasNgayThu = DB::getDoctrineSchemaManager()
-                    ->listTableDetails('phieu_thus')->hasColumn('ngay_thu');
-            } catch (\Throwable $e) {
-                $hasNgayThu = false;
-            }
+  if ($line === 1) {
+    // Chi tiết doanh thu 01 — ĐƠN HÀNG ĐÃ GIAO (alias field giữ nguyên để FE dùng lại)
+    $rows = DB::table('don_hangs as dh')
+      ->whereIn('dh.trang_thai_don_hang', [2, 3])
 
-            // Xác định cột loại để loại trừ tài chính
-            $thuTypeCol = null;
-            if ($this->columnExists('phieu_thus', 'loai')) {
-                $thuTypeCol = 'loai';
-            } elseif ($this->columnExists('phieu_thus', 'loai_phieu_thu')) {
-                $thuTypeCol = 'loai_phieu_thu';
-            }
+        ->when($from, fn($q)=>$q->whereDate('dh.nguoi_nhan_thoi_gian','>=',$from))
+        ->when($to,   fn($q)=>$q->whereDate('dh.nguoi_nhan_thoi_gian','<=',$to))
+        ->selectRaw(
+            "dh.id, dh.ma_don_hang as ma_phieu_thu, " .
+            "DATE(dh.nguoi_nhan_thoi_gian) as ngay, " .
+            "dh.ten_khach_hang as nguoi_tra, " .
+            "dh.tong_tien_can_thanh_toan as so_tien"
+        )
+        ->orderBy('dh.nguoi_nhan_thoi_gian','desc')->orderBy('dh.id','desc')
+        ->get();
 
-            $rows = DB::table('phieu_thus as pt')
-                ->when($thuTypeCol, function ($q) use ($thuTypeCol) {
-                    $q->where(function ($qq) use ($thuTypeCol) {
-                        $qq->where($thuTypeCol,'!=','TAI_CHINH')
-                           ->where($thuTypeCol,'!=',5);
-                    });
-                })
-                ->when($from, fn($q)=>$q->whereDate($hasNgayThu ? 'pt.ngay_thu':'pt.created_at','>=',$from))
-                ->when($to,   fn($q)=>$q->whereDate($hasNgayThu ? 'pt.ngay_thu':'pt.created_at','<=',$to))
-                ->selectRaw(
-                    'pt.id, pt.ma_phieu_thu, '.
-                    ($hasNgayThu ? 'pt.ngay_thu':'DATE(pt.created_at)').' as ngay, '.
-                    'pt.so_tien, pt.nguoi_tra, pt.phuong_thuc_thanh_toan'
-                )
-                ->orderBy('ngay','desc')->orderBy('pt.id','desc')
-                ->get();
+    $byDay = $rows->groupBy('ngay')->map(fn($g)=>$g->sum('so_tien'))->map(fn($v)=>(int)$v)->all();
 
-            $byDay = (clone $rows)->groupBy('ngay')->map(fn($g)=>$g->sum('so_tien'))->map(fn($v)=>(int)$v)->all();
+    return CustomResponse::success([
+        'params'     => ['from'=>$from,'to'=>$to,'line'=>$line],
+        'byCategory' => [],
+        'byDay'      => $byDay,
+        'rows'       => $rows,
+    ]);
+}
 
-            return CustomResponse::success([
-                'params'     => ['from'=>$from,'to'=>$to,'line'=>$line],
-                'byCategory' => [],
-                'byDay'      => $byDay,
-                'rows'       => $rows,
-            ]);
-        }
 
         // ====== Chi phí: 02/05/06/07/08/10 ======
         $pc = 'phieu_chis';
