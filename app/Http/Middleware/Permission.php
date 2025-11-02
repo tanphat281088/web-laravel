@@ -50,6 +50,17 @@ class Permission
         'api/cash/internal-transfers',
         // ===========================================================
 'api/utilities/fb',
+// ✅ MỚI: mở quyền Utilities → Zalo & OAuth/Webhook
+'api/utilities/zl',
+'api/zl/oauth',
+'api/zl/webhook',
+
+
+        // ✅ MỚI: mở quyền Utilities → Zalo & OAuth/Webhook
+        'api/utilities/zl',   // cho toàn bộ /api/utilities/zl/*
+        'api/zl/oauth',       // prefix: /api/zl/oauth/redirect|callback
+        'api/zl/webhook',     // nếu dùng webhook OA
+
 
 
     ];
@@ -77,6 +88,9 @@ class Permission
 
                 // ✅ Utilities → Tư vấn Facebook: map URL -> module quyền 'utilities-fb'
         'utilities/fb' => 'utilities-fb',
+
+                'utilities/zl' => 'utilities-zl',
+
 
 
 
@@ -148,6 +162,26 @@ if (
                 $action = 'update';
             }
             if ($method === 'PATCH' && preg_match('#^utilities/fb/conversations/\\d+/status$#', $pathForCheck) === 1) {
+                $action = 'update';
+            }
+        }
+
+                // ✅ Force module/action cho Utilities → Zalo endpoints
+        if (preg_match('#^utilities/zl/#', $pathForCheck) === 1) {
+
+            // READ
+            if ($method === 'GET' && preg_match('#^utilities/zl/(health|conversations(/\d+)?)$#', $pathForCheck) === 1) {
+                $action = 'index';
+            }
+
+            // WRITE: reply / assign / status
+            if ($method === 'POST' && preg_match('#^utilities/zl/conversations/\d+/reply$#', $pathForCheck) === 1) {
+                $action = 'update';
+            }
+            if ($method === 'POST' && preg_match('#^utilities/zl/conversations/\d+/assign$#', $pathForCheck) === 1) {
+                $action = 'update';
+            }
+            if ($method === 'PATCH' && preg_match('#^utilities/zl/conversations/\d+/status$#', $pathForCheck) === 1) {
                 $action = 'update';
             }
         }

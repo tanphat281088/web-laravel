@@ -18,6 +18,11 @@ class Kernel extends ConsoleKernel
 
         // Nếu muốn nhẹ hệ thống hơn, có thể dùng mỗi 5 phút:
         // $schedule->job(new ScanUpcomingDeliveries(60, 5))->everyFiveMinutes();
+
+            // === Zalo: kiểm tra & làm mới access token (worker24h) ===
+       // === Zalo: kiểm tra & làm mới access token (worker24h) ===
+    $schedule->job(new \App\Jobs\Zl\RefreshZlTokenJob())->everyFiveMinutes();
+
     }
 
     /**

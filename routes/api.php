@@ -32,6 +32,12 @@ use App\Modules\CSKH\MemberPointMaintenanceController;
 use App\Modules\Utilities\Facebook\FbInboxController;
 use App\Modules\Utilities\Facebook\MessengerWebhookController;
 
+use App\Modules\Utilities\Zalo\Controllers\ZlOAuthController;
+use App\Modules\Utilities\Zalo\Controllers\ZlInboxController;
+use App\Modules\Utilities\Zalo\Controllers\ZlWebhookController; // nếu dùng webhook OA
+
+
+
 
 Route::prefix('cskh/points')->group(function () {
     Route::post('/resync', [MemberPointMaintenanceController::class, 'resync']); // rà soát & đồng bộ theo delta
@@ -58,6 +64,16 @@ Route::prefix('fb')->group(function () {
 });
 // =================================================================================================
 
+// ================== (KHUNG) Zalo OAuth v4 / Webhook — PUBLIC (no auth) ==================
+Route::prefix('zl')->group(function () {
+    // OAuth v4 (PKCE)
+    Route::get('/oauth/redirect', [ZlOAuthController::class, 'redirect']); // sinh state+code_verifier, redirect permission
+    Route::get('/oauth/callback', [ZlOAuthController::class, 'callback']); // nhận code+state, đổi access/refresh token
+
+    // (Tuỳ chọn) Webhook OA — chỉ bật nếu bạn dùng push thay vì pull
+    Route::post('/webhook', [\App\Modules\Utilities\Zalo\Controllers\ZlWebhookController::class, 'receive']);
+});
+// =========================================================================================
 
 
 Route::get('lich-su-import/download-file/{id}', [LichSuImportController::class, 'downloadFile']);
@@ -304,6 +320,23 @@ Route::prefix('utilities')->group(function () {
         Route::post  ('/conversations/{id}/reply',  [FbInboxController::class, 'reply'])->whereNumber('id');
         Route::post  ('/conversations/{id}/assign', [FbInboxController::class, 'assign'])->whereNumber('id');
         Route::patch ('/conversations/{id}/status', [FbInboxController::class, 'status'])->whereNumber('id');
+
+   
+    });
+
+             // ================== (KHUNG) QUẢN LÝ TIỆN ÍCH → TƯ VẤN ZALO ==================
+    Route::prefix('zl')->group(function () {
+        // Sức khoẻ module + TTL access/refresh + flags dịch/polish
+        Route::get   ('/health',                    [ZlInboxController::class, 'health']);
+
+        // Danh sách hội thoại & chi tiết thread
+        Route::get   ('/conversations',             [ZlInboxController::class, 'conversations']);
+        Route::get   ('/conversations/{id}',        [ZlInboxController::class, 'show'])->whereNumber('id');
+
+        // Gửi trả lời (VI -> EN + polish + gửi OA), gán người phụ trách, đổi trạng thái
+        Route::post  ('/conversations/{id}/reply',  [ZlInboxController::class, 'reply'])->whereNumber('id');
+        Route::post  ('/conversations/{id}/assign', [ZlInboxController::class, 'assign'])->whereNumber('id');
+        Route::patch ('/conversations/{id}/status', [ZlInboxController::class, 'status'])->whereNumber('id');
     });
 });
 // ==================================================================================
@@ -564,3 +597,14 @@ Route::middleware(['jwt', 'permission'])
             Route::delete('/{id}',[HolidayController::class, 'destroy'])->name('holiday.destroy'); // nhan-su.delete
         });
     });
+
+// ===== ZALO INBOX WEBHOOK (PUBLIC) =====
+// use App\Modules\Utilities\Zalo\Controllers\ZlWebhookController;
+
+Route::prefix('utilities/zl')->group(function () {
+    // Webhook nhận từ Zalo (PUBLIC, không auth)
+    Route::post('/webhook', [\App\Modules\Utilities\Zalo\Controllers\ZlWebhookController::class, 'handle'])->name('zl.webhook');
+
+    // Ping test nhanh (PUBLIC)
+    Route::get('/webhook/ping', [\App\Modules\Utilities\Zalo\Controllers\ZlWebhookController::class, 'ping'])->name('zl.webhook.ping');
+});

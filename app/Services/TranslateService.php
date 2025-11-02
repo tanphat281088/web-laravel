@@ -175,8 +175,8 @@ class TranslateService
                 ->post('https://api.openai.com/v1/chat/completions', [
                     'model'    => $this->openaiModel,
                     'temperature'        => 0.2,
-'frequency_penalty'  => 0.3,
-'presence_penalty'   => 0.0,
+                    'frequency_penalty'  => 0.3,
+                    'presence_penalty'   => 0.0,
                     'messages' => [
                         ['role' => 'system', 'content' => $system],
                         ['role' => 'user',   'content' => "Please rephrase:\n\n" . $textEn],
