@@ -146,13 +146,24 @@ class VtItemController extends Controller
         return CustomResponse::success($item->fresh(), 'Cập nhật vật tư thành công');
     }
 
-    public function destroy($id)
-    {
-        $item = VtItem::find($id);
-        if (!$item) return CustomResponse::error('Không tìm thấy vật tư', 404);
-        $item->delete();
-        return CustomResponse::success([], 'Xóa vật tư thành công');
+public function destroy(int $id)
+{
+    try {
+        \DB::table('vt_items')->where('id', $id)->delete();
+        return response()->json(['success' => true, 'message' => 'Xóa vật tư thành công', 'data' => []], 200);
+    } catch (\Illuminate\Database\QueryException $e) {
+        // MySQL FK violation: error code 1451
+        if ((int)($e->errorInfo[1] ?? 0) === 1451) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Vật tư đang được tham chiếu bởi chứng từ (phiếu nhập/xuất hoặc sổ kho), không thể xóa.',
+                'errors'  => 409,
+            ], 409);
+        }
+        throw $e;
     }
+}
+
 
     public function options(Request $request)
     {

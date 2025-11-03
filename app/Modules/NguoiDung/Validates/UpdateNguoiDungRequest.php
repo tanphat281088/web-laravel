@@ -33,8 +33,10 @@ class UpdateNguoiDungRequest extends FormRequest
       'ward_id' => 'required|integer',
       'address' => 'required|string|max:255',
       'status' => 'required|integer',
-      'image' => 'string',
-      'ma_vai_tro' => 'required|string',
+   'image' => 'nullable|string',
+
+ 'ma_vai_tro' => 'required|string|exists:vai_tros,ma_vai_tro,trang_thai,1',
+
     ];
   }
 

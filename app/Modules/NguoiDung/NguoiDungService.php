@@ -62,10 +62,13 @@ class NguoiDungService
   public function create(array $data)
   {
     try {
-      $user = User::create($data);
-      $user->images()->create([
-        'path' => $data['image'],
-      ]);
+$user = User::create($data);
+if (!empty($data['image'])) {
+  $user->images()->create([
+    'path' => $data['image'],
+  ]);
+}
+
       return $user;
     } catch (Exception $e) {
       return CustomResponse::error($e->getMessage());
@@ -79,14 +82,20 @@ class NguoiDungService
   {
     try {
       $model = User::findOrFail($id);
-      $model->update($data);
-      if ($data['image']) {
-        $model->images()->get()->each(function ($image) use ($data) {
-          $image->update([
-            'path' => $data['image'],
-          ]);
-        });
+            // Chặn đổi vai trò của tài khoản quản trị hệ thống
+      if (strcasecmp($model->email ?? '', 'admin@gmail.com') === 0 && array_key_exists('ma_vai_tro', $data)) {
+        return CustomResponse::error('Không thể đổi vai trò của tài khoản quản trị hệ thống (admin@gmail.com).');
       }
+
+      $model->update($data);
+if (array_key_exists('image', $data) && !empty($data['image'])) {
+  $model->images()->get()->each(function ($image) use ($data) {
+    $image->update([
+      'path' => $data['image'],
+    ]);
+  });
+}
+
       return $model->fresh();
     } catch (Exception $e) {
       return CustomResponse::error($e->getMessage());
@@ -99,15 +108,24 @@ class NguoiDungService
   public function delete($id)
   {
     try {
-      $currentUser = Auth::user();
-      if ($currentUser->id == $id) {
-        return false;
-      }
-      $model = User::findOrFail($id);
-      $model->images()->get()->each(function ($image) {
-        $image->delete();
-      });
-      return $model->delete();
+$currentUser = Auth::user();
+if ($currentUser && (int)$currentUser->id === (int)$id) {
+  return CustomResponse::error('Không thể xoá tài khoản đang đăng nhập.');
+}
+
+$model = User::findOrFail($id);
+
+// Chặn xoá tài khoản admin hệ thống
+if (strcasecmp($model->email ?? '', 'admin@gmail.com') === 0) {
+  return CustomResponse::error('Không thể xoá tài khoản quản trị hệ thống (admin@gmail.com).');
+}
+
+$model->images()->get()->each(function ($image) {
+  $image->delete();
+});
+
+return $model->delete();
+
     } catch (Exception $e) {
       return CustomResponse::error($e->getMessage());
     }

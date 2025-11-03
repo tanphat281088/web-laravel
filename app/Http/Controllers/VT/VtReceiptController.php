@@ -97,9 +97,41 @@ class VtReceiptController extends Controller
         return CustomResponse::success($updated, 'Cập nhật phiếu nhập VT thành công');
     }
 
-    public function destroy($id)
-    {
-        $this->ledger->deleteReceipt((int)$id);
-        return CustomResponse::success([], 'Xóa phiếu nhập VT thành công');
+public function destroy(int $id)
+{
+    try {
+        \DB::beginTransaction();
+
+        // 1) Dọn sổ kho/ledger (nếu bạn lưu theo receipt_id)
+        \DB::table('vt_ledger')->where('vt_receipt_id', $id)->delete();
+
+        // 2) Dọn chi tiết phiếu nhập
+        \DB::table('vt_receipt_items')->where('vt_receipt_id', $id)->delete();
+
+        // (tuỳ mô hình) nếu có bảng tồn tổng, hoàn nhập trước khi xoá, hoặc xóa các bản ghi liên quan
+        // \DB::table('vt_stocks')->where('ref_type', 'RECEIPT')->where('ref_id', $id)->delete();
+
+        // 3) Xoá phiếu nhập
+        \DB::table('vt_receipts')->where('id', $id)->delete();
+
+        \DB::commit();
+        return response()->json([
+            'success' => true,
+            'message' => 'Xóa phiếu nhập VT thành công',
+            'data'    => [],
+        ], 200);
+    } catch (\Illuminate\Database\QueryException $e) {
+        \DB::rollBack();
+        // MySQL FK violation 1451 → trả 409 để FE hiện thông báo rõ ràng
+        if ((int)($e->errorInfo[1] ?? 0) === 1451) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Phiếu nhập đang được tham chiếu (sổ kho/chi tiết). Vui lòng dọn bản ghi phụ thuộc trước.',
+                'errors'  => 409,
+            ], 409);
+        }
+        throw $e;
     }
+}
+
 }

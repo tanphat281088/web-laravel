@@ -47,31 +47,45 @@ class Helper
 
   public static function convertMethod($path, $method)
   {
-    $pathArr = explode("/", $path);
+    // Chuẩn hoá: bỏ "api/" ở đầu nếu có
+    $cleanPath = ltrim(preg_replace('#^api/#', '', (string) $path), '/');
 
-    if (count($pathArr) === 1) {
-      switch ($method) {
-        case "GET":
-          return "index";
-        case "POST":
-          return "create";
+    // 1) Ưu tiên nhận diện EXPORT/template trước (áp dụng cho cả list/detail)
+    //    Ví dụ: .../download-template-excel, .../export, .../kqkd-export
+    if (preg_match('#(download-template-excel|kqkd-export|/export)(\?|/|$)#', $cleanPath) === 1) {
+      return 'export';
+    }
+
+    // 2) CRUD cơ bản dựa theo số segment & method (giữ logic cũ, nhưng dùng $cleanPath)
+    $pathArr = explode('/', $cleanPath);
+
+    // /prefix (không có id)
+    if (count($pathArr) === 1 || $pathArr[1] === '') {
+      switch (strtoupper($method)) {
+        case 'GET':
+          return 'index';
+        case 'POST':
+          return 'create';
       }
     }
 
+    // /prefix/{id} hoặc sâu hơn
     if (count($pathArr) > 1) {
-      switch ($method) {
-        case "GET":
-          return "show";
-        case "PUT":
-        case "PATCH":
-          return "edit";
-        case "DELETE":
-          return "delete";
+      switch (strtoupper($method)) {
+        case 'GET':
+          return 'show';
+        case 'PUT':
+        case 'PATCH':
+          return 'edit';
+        case 'DELETE':
+          return 'delete';
       }
     }
 
-    return "index";
+    // 3) Mặc định an toàn
+    return 'index';
   }
+
 
   public static function generateMaLoSanPham()
   {

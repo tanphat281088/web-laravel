@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
+
 class VtItem extends Model
 {
     use UserTrackable, UserNameResolver, DateTimeFormatter;

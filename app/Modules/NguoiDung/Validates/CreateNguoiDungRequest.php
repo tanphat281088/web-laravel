@@ -36,7 +36,8 @@ class CreateNguoiDungRequest extends FormRequest
       'address' => 'required|string|max:255',
       'status' => 'required|integer',
       'image' => 'nullable|string',
-      'ma_vai_tro' => 'required|string',
+     'ma_vai_tro' => 'required|string|exists:vai_tros,ma_vai_tro,trang_thai,1',
+
     ];
   }
 

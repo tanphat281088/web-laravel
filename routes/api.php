@@ -36,6 +36,10 @@ use App\Modules\Utilities\Zalo\Controllers\ZlOAuthController;
 use App\Modules\Utilities\Zalo\Controllers\ZlInboxController;
 use App\Modules\Utilities\Zalo\Controllers\ZlWebhookController; // nếu dùng webhook OA
 
+use App\Http\Middleware\Permission as PermV1;
+use App\Http\Middleware\PermissionV2 as PermV2;
+
+
 
 
 
@@ -94,9 +98,24 @@ Route::get('expense-categories/tree',    [ExpenseCategoryController::class, 'tre
 Route::middleware(['jwt'])->get('vt/references', [\App\Http\Controllers\VT\VtReferenceController::class, 'index']);
 
 
+// ==== VT masters: /options (JWT-only, không check permission) ====
+Route::middleware(['jwt'])->prefix('vt')->group(function () {
+Route::get('categories/options', [\App\Http\Controllers\VT\VtMasterController::class, 'categoryOptions'])
+         ->withoutMiddleware([PermV1::class, PermV2::class]);
+
+    Route::get('groups/options',     [\App\Http\Controllers\VT\VtMasterController::class, 'groupOptions'])
+         ->withoutMiddleware([PermV1::class, PermV2::class]);
+
+    Route::get('units/options',      [\App\Http\Controllers\VT\VtMasterController::class, 'unitOptions'])
+         ->withoutMiddleware([PermV1::class, PermV2::class]);
+});
+
+
+
 Route::group([
-  'middleware' => ['jwt', 'permission'],
+  'middleware' => ['jwt', env('PERMISSION_ENGINE', 'permission') === 'v2' ? PermV2::class : PermV1::class],
 ], function ($router) {
+
 
   // Authenticated
   Route::group(['prefix' => 'auth'], function () {
@@ -108,9 +127,8 @@ Route::group([
   });
 
   // Lấy danh sách phân quyền
-  Route::get('danh-sach-phan-quyen', function () {
-    return CustomResponse::success(config('permission'));
-  });
+// Lấy danh sách phân quyền (auto V1/V2 theo flag PERMISSION_ENGINE)
+Route::get('danh-sach-phan-quyen', [\App\Http\Controllers\Api\PermissionRegistryController::class, 'index']);
 
   // ================== LOẠI SẢN PHẨM (MASTER) – DROPDOWN OPTIONS ==================
   // MỚI: Endpoint trả về danh sách options cho dropdown "Loại sản phẩm"
@@ -503,11 +521,7 @@ Route::prefix('vt')->group(function () {
     Route::get('stocks', [\App\Http\Controllers\VT\VtStockController::class, 'index']);
     Route::get('ledger', [\App\Http\Controllers\VT\VtLedgerController::class, 'index']);
 
-    // === NEW: dropdown masters ===
-    Route::get('categories/options', [\App\Http\Controllers\VT\VtMasterController::class, 'categoryOptions']);
-    Route::get('groups/options',     [\App\Http\Controllers\VT\VtMasterController::class, 'groupOptions']);
-    Route::get('units/options',      [\App\Http\Controllers\VT\VtMasterController::class, 'unitOptions']);
-
+   
 
 });
 
@@ -559,10 +573,11 @@ Route::prefix('sign-maker')->middleware([])->group(function () {
          ->name('sign-maker.download');
 });
 
-Route::middleware(['jwt', 'permission'])
+Route::middleware(['jwt', env('PERMISSION_ENGINE', 'permission') === 'v2' ? PermV2::class : PermV1::class])
     ->prefix('nhan-su')
     ->name('nhan-su.')
     ->group(function () {
+
         // ===== Chấm công =====
         Route::post('cham-cong/checkin',  [ChamCongController::class,         'checkin'])->name('cham-cong.checkin');
         Route::post('cham-cong/checkout', [ChamCongCheckoutController::class, 'checkout'])->name('cham-cong.checkout');
