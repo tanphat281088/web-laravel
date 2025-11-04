@@ -87,6 +87,7 @@ class PermissionV2
         'auth/me',
         'auth/logout',
         'auth/profile',
+        'auth/change-password', 
 
         // Các endpoint tra cứu/khởi tạo cần mở (nếu chúng đi trong group có permission)
         'danh-sach-phan-quyen',

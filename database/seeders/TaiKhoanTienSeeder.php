@@ -98,13 +98,14 @@ class TaiKhoanTienSeeder extends Seeder
                 'ma_tk'            => 'HONG_TUYET',
                 'ten_tk'           => 'VÕ THỊ HỒNG TUYẾT',
                 'loai'             => 'bank',
-                'so_tai_khoan'     => '1010161510008',
-                'ngan_hang'        => 'MB', // MBBank
+                'so_tai_khoan'     => '0935358761',
+                'ngan_hang'        => 'TCB', // Techcombank
+                'is_default_cash'  => false,
                 'is_default_cash'  => false,
                 'is_active'        => true,
                 'opening_balance'  => 0,
                 'opening_date'     => null,
-                'ghi_chu'          => 'MBBank',
+                'ghi_chu'          => 'Techcombank',
                 'created_at'       => $now,
                 'updated_at'       => $now,
             ],
@@ -191,7 +192,7 @@ class TaiKhoanTienSeeder extends Seeder
             $aliases[] = [
                 'tai_khoan_id'    => $map['HONG_TUYET'] ?? null,
                 'pattern_bank'    => $bank,
-                'pattern_account' => '1010161510008',
+                'pattern_account' => '0935358761',
                 'pattern_note'    => 'VO THI HONG TUYET',
                 'is_active'       => true,
                 'created_at'      => $now,

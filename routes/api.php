@@ -124,6 +124,8 @@ Route::group([
         Route::match(['GET','POST'], 'me', [AuthController::class, 'me']);
 
     Route::post('profile', [AuthController::class, 'updateProfile']);
+    Route::post('change-password', [AuthController::class, 'changePassword']);
+
   });
 
   // Lấy danh sách phân quyền

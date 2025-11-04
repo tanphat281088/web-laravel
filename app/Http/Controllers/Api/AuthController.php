@@ -28,6 +28,9 @@ use App\Models\ThoiGianLamViec;
 use Illuminate\Support\Facades\Hash;
 use Exception;
 
+use App\Http\Requests\ChangePasswordRequest;
+
+
 class AuthController extends Controller
 {
   public function login(AuthRequest $request)
@@ -435,4 +438,32 @@ class AuthController extends Controller
       'expires_in' => Auth::factory()->getTTL() * 60,
     ], 'Đăng nhập thành công', Response::HTTP_OK);
   }
+
+  /**
+   * Đổi mật khẩu (yêu cầu JWT)
+   * Body: { current_password, new_password, confirm_password }
+   */
+  public function changePassword(\App\Http\Requests\ChangePasswordRequest $request)
+  {
+    /** @var \App\Models\User $user */
+    $user = Auth::user();
+
+    // 1) Kiểm tra mật khẩu hiện tại
+    if (!\Illuminate\Support\Facades\Hash::check($request->input('current_password'), $user->password)) {
+      return \App\Class\CustomResponse::error('Mật khẩu hiện tại không đúng.', 422);
+    }
+
+    // 2) Không cho dùng lại mật khẩu cũ
+    if (\Illuminate\Support\Facades\Hash::check($request->input('new_password'), $user->password)) {
+      return \App\Class\CustomResponse::error('Mật khẩu mới trùng mật khẩu hiện tại.', 422);
+    }
+
+    // 3) Cập nhật mật khẩu
+    $user->password = \Illuminate\Support\Facades\Hash::make($request->input('new_password'));
+    $user->save();
+
+    return \App\Class\CustomResponse::success([], 'Đổi mật khẩu thành công.');
+  }
+
+
 }
