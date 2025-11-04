@@ -29,7 +29,7 @@ class UpdateSanPhamRequest extends FormRequest
      // ✅ CHỈNH: cho phép nullable + kiểm tra exists nếu có giá trị
       'danh_muc_id'        => 'sometimes|nullable|integer|exists:danh_muc_san_phams,id',
       'don_vi_tinh_id'     => 'sometimes|required|array|min:1',
-      'nha_cung_cap_id'    => 'sometimes|nullable|array',
+      'nha_cung_cap_id'    => 'sometimes|nullable|array|min:1',
 
       // Giá
       'gia_nhap_mac_dinh'  => 'sometimes|required|numeric',
@@ -65,6 +65,7 @@ class UpdateSanPhamRequest extends FormRequest
       'don_vi_tinh_id.array' => 'Đơn vị tính phải là mảng',
       'don_vi_tinh_id.min' => 'Đơn vị tính phải có ít nhất 1 phần tử',
       'nha_cung_cap_id.array' => 'Nhà cung cấp phải là mảng',
+      'nha_cung_cap_id.min' => 'Nhà cung cấp phải có ít nhất 1 phần tử',
 
       'gia_nhap_mac_dinh.required' => 'Giá nhập mặc định là bắt buộc',
       'gia_nhap_mac_dinh.numeric' => 'Giá nhập mặc định phải là số',
