@@ -18,34 +18,40 @@ class QuanLyBanHangService
     /**
      * Lấy tất cả dữ liệu
      */
-    public function getAll(array $params = [])
-    {
-        try {
-            // Tạo query cơ bản
-            $query = DonHang::query()->with('images');
+public function getAll(array $params = [])
+{
+    try {
+        // Tạo query cơ bản
+        $query = DonHang::query()->with('images');
 
-            // Sử dụng FilterWithPagination để xử lý filter và pagination
-            $result = FilterWithPagination::findWithPagination(
-                $query,
-                $params,
-                ['don_hangs.*'] // Columns cần select
-            );
+        // ✅ Sắp xếp DH00284 → DH00283 → … theo phần số sau “DH”
+        // (để an toàn, tie-break thêm theo id desc)
+        $query->orderByRaw('CAST(SUBSTRING(don_hangs.ma_don_hang, 3) AS UNSIGNED) DESC')
+              ->orderByDesc('don_hangs.id');
 
-            return [
-                'data' => $result['collection'],
-                'total' => $result['total'],
-                'pagination' => [
-                    'current_page' => $result['current_page'],
-                    'last_page' => $result['last_page'],
-                    'from' => $result['from'],
-                    'to' => $result['to'],
-                    'total_current' => $result['total_current'],
-                ],
-            ];
-        } catch (Exception $e) {
-            throw new Exception('Lỗi khi lấy danh sách: ' . $e->getMessage());
-        }
+        // Sử dụng FilterWithPagination để xử lý filter và pagination
+        $result = FilterWithPagination::findWithPagination(
+            $query,
+            $params,
+            ['don_hangs.*'] // Columns cần select
+        );
+
+        return [
+            'data' => $result['collection'],
+            'total' => $result['total'],
+            'pagination' => [
+                'current_page' => $result['current_page'],
+                'last_page' => $result['last_page'],
+                'from' => $result['from'],
+                'to' => $result['to'],
+                'total_current' => $result['total_current'],
+            ],
+        ];
+    } catch (Exception $e) {
+        throw new Exception('Lỗi khi lấy danh sách: ' . $e->getMessage());
     }
+}
+
 
     /**
      * Lấy dữ liệu theo ID

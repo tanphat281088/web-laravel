@@ -84,16 +84,18 @@ return [
   ['name' => 'cash-internal-transfers',  'actions' => ['showMenu'=>false,'index'=>false,'show'=>false,'create'=>false,'edit'=>false,'delete'=>false,'export'=>false,'post'=>false,'unpost'=>false]],
 
 
-    // ===== QUẢN LÝ CÔNG NỢ =====
-  ['name' => 'quan-ly-cong-no', 'actions' => [
-    'showMenu' => false,
-    'index'    => false,
-    'show'     => false,
+// ===== QUẢN LÝ CÔNG NỢ =====
+['name' => 'quan-ly-cong-no', 'actions' => [
+    'showMenu' => true,  // hiện mục trên Sidebar
+    'index'    => true,  // GET /cong-no/summary
+    'show'     => true,  // GET /cong-no/customers/{id}
+    'export'   => true,  // GET /cong-no/export
+    // giữ read-only:
     'create'   => false,
     'edit'     => false,
     'delete'   => false,
-    'export'   => false,
-  ]],
+]],
+
 
   // ===== NHÂN SỰ =====
 ['name' => 'nhan-su', 'actions' => [

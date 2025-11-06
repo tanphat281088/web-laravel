@@ -96,23 +96,13 @@ class VtReceiptController extends Controller
         $updated = $this->ledger->updateReceipt((int)$id, $payload);
         return CustomResponse::success($updated, 'Cập nhật phiếu nhập VT thành công');
     }
-
 public function destroy(int $id)
 {
     try {
         \DB::beginTransaction();
 
-        // 1) Dọn sổ kho/ledger (nếu bạn lưu theo receipt_id)
-        \DB::table('vt_ledger')->where('vt_receipt_id', $id)->delete();
-
-        // 2) Dọn chi tiết phiếu nhập
-        \DB::table('vt_receipt_items')->where('vt_receipt_id', $id)->delete();
-
-        // (tuỳ mô hình) nếu có bảng tồn tổng, hoàn nhập trước khi xoá, hoặc xóa các bản ghi liên quan
-        // \DB::table('vt_stocks')->where('ref_type', 'RECEIPT')->where('ref_id', $id)->delete();
-
-        // 3) Xoá phiếu nhập
-        \DB::table('vt_receipts')->where('id', $id)->delete();
+        // ✅ Dùng service để hoàn tồn + xoá ledger + xoá chi tiết + xoá header
+        $this->ledger->deleteReceipt($id);
 
         \DB::commit();
         return response()->json([
@@ -122,16 +112,18 @@ public function destroy(int $id)
         ], 200);
     } catch (\Illuminate\Database\QueryException $e) {
         \DB::rollBack();
-        // MySQL FK violation 1451 → trả 409 để FE hiện thông báo rõ ràng
-        if ((int)($e->errorInfo[1] ?? 0) === 1451) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Phiếu nhập đang được tham chiếu (sổ kho/chi tiết). Vui lòng dọn bản ghi phụ thuộc trước.',
-                'errors'  => 409,
-            ], 409);
-        }
+        // Nếu có ràng buộc khác phát sinh, trả về 409 cho FE hiển thị rõ
+        return response()->json([
+            'success' => false,
+            'message' => 'Không thể xóa phiếu nhập: ' . ($e->getMessage() ?: 'Lỗi cơ sở dữ liệu'),
+            'errors'  => 409,
+        ], 409);
+    } catch (\Throwable $e) {
+        \DB::rollBack();
+        // Các lỗi khác (không tìm thấy, logic…) để bubble lên 500 cho log
         throw $e;
     }
 }
+
 
 }

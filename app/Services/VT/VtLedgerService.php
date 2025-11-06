@@ -221,22 +221,76 @@ class VtLedgerService
             $receipt->items()->delete();
 
             // Ghi lại như create — giữ số CT cũ
-            $payload['so_ct']           = $receipt->so_ct;
-            $payload['ngay_ct']         = $payload['ngay_ct'] ?? $receipt->ngay_ct->toDateString();
-            $payload['nha_cung_cap_id'] = $payload['nha_cung_cap_id'] ?? $receipt->nha_cung_cap_id;
+// Ghi lại ITEMS + LEDGER trên CHÍNH $receipt (không tạo mới master)
+$ngayCt  = $payload['ngay_ct'] ?? $receipt->ngay_ct->toDateString();
+$tongSL  = 0;
+$tongGT  = 0.0;
 
-            $updated = $this->createReceipt($payload);
+$items = $payload['items'] ?? [];
+if (empty($items)) {
+    throw new \InvalidArgumentException('Phiếu nhập không có dòng vật tư');
+}
 
-            // Cập nhật thông tin mô tả của header (ghi chú/tham chiếu) nếu đổi
-            $receipt->update([
-                'ngay_ct'         => $payload['ngay_ct'] ?? $receipt->ngay_ct,
-                'nha_cung_cap_id' => $payload['nha_cung_cap_id'] ?? $receipt->nha_cung_cap_id,
-                'tham_chieu'      => $payload['tham_chieu'] ?? $receipt->tham_chieu,
-                'ghi_chu'         => $payload['ghi_chu'] ?? $receipt->ghi_chu,
-                'nguoi_cap_nhat'  => $userId,
-            ]);
+foreach ($items as $it) {
+    $vtItemId = (int) ($it['vt_item_id'] ?? 0);
+    $soLuong  = (int) ($it['so_luong']   ?? 0);
+    $donGia   = array_key_exists('don_gia', $it) ? (float)$it['don_gia'] : null;
 
-            return $updated;
+    if ($vtItemId <= 0 || $soLuong <= 0) {
+        throw new \InvalidArgumentException('Dòng nhập không hợp lệ (vt_item_id/so_luong)');
+    }
+
+    /** @var \App\Models\VtItem $item */
+    $item = \App\Models\VtItem::findOrFail($vtItemId);
+
+    // 1) Lưu lại dòng chi tiết gắn với CHÍNH $receipt hiện có
+    \App\Models\VtReceiptItem::create([
+        'vt_receipt_id'  => $receipt->id,
+        'vt_item_id'     => $vtItemId,
+        'so_luong'       => $soLuong,
+        'don_gia'        => $donGia, // CONSUMABLE cho phép null
+        'ghi_chu'        => $it['ghi_chu'] ?? null,
+        'nguoi_tao'      => $userId,
+        'nguoi_cap_nhat' => $userId,
+    ]);
+
+    // 2) Ghi ledger RECEIPT (tham chiếu số CT cũ)
+    \App\Models\VtLedger::create([
+        'vt_item_id'     => $vtItemId,
+        'ngay_ct'        => $ngayCt,
+        'loai_ct'        => \App\Models\VtLedger::CT_RECEIPT,
+        'so_luong_in'    => $soLuong,
+        'so_luong_out'   => 0,
+        'don_gia'        => $item->loai === 'ASSET' ? ($donGia ?? 0.0) : null,
+        'tham_chieu'     => $receipt->so_ct,
+        'ghi_chu'        => $it['ghi_chu'] ?? null,
+        'nguoi_tao'      => $userId,
+        'nguoi_cap_nhat' => $userId,
+    ]);
+
+    // 3) Cập nhật tồn
+    $this->stockService->applyReceipt($vtItemId, $soLuong, $donGia);
+
+    // 4) Tổng hợp
+    $tongSL += $soLuong;
+    if ($item->loai === 'ASSET') {
+        $tongGT += (($donGia ?? 0.0) * $soLuong);
+    }
+}
+
+// 5) Cập nhật HEADER ngay trên chính $receipt
+$receipt->update([
+    'ngay_ct'         => $ngayCt,
+    'nha_cung_cap_id' => $payload['nha_cung_cap_id'] ?? $receipt->nha_cung_cap_id,
+    'tham_chieu'      => $payload['tham_chieu']      ?? $receipt->tham_chieu,
+    'ghi_chu'         => $payload['ghi_chu']         ?? $receipt->ghi_chu,
+    'tong_so_luong'   => $tongSL,
+    'tong_gia_tri'    => $tongGT > 0 ? $tongGT : null,
+    'nguoi_cap_nhat'  => $userId,
+]);
+
+return $receipt->fresh();
+
         });
     }
 

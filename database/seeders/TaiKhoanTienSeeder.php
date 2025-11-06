@@ -100,7 +100,7 @@ class TaiKhoanTienSeeder extends Seeder
                 'loai'             => 'bank',
                 'so_tai_khoan'     => '0935358761',
                 'ngan_hang'        => 'TCB', // Techcombank
-                'is_default_cash'  => false,
+               
                 'is_default_cash'  => false,
                 'is_active'        => true,
                 'opening_balance'  => 0,
@@ -125,12 +125,29 @@ class TaiKhoanTienSeeder extends Seeder
                 'created_at'       => $now,
                 'updated_at'       => $now,
             ],
+
+            // ⭐ CTY TNHH TIỆC CƯỚI PHÁT HOÀNG GIA – TECHCOMBANK 333444555666
+[
+    'ma_tk'            => 'PHG_WEDDING',                 // mã duy nhất
+    'ten_tk'           => 'CTY TNHH TIỆC CƯỚI PHÁT HOÀNG GIA',
+    'loai'             => 'bank',
+    'so_tai_khoan'     => '333444555666',
+    'ngan_hang'        => 'TCB',                         // Techcombank
+    'is_default_cash'  => false,
+    'is_active'        => true,
+    'opening_balance'  => 0,
+    'opening_date'     => null,
+    'ghi_chu'          => 'Techcombank',
+    'created_at'       => $now,
+    'updated_at'       => $now,
+],
+
         ];
 
         // ❗ Fix nhỏ: uniqueBy phải là ['ma_tk'] (dòng cũ có khoảng trắng và sai cú pháp)
         DB::table('tai_khoan_tiens')->upsert(
             $accounts,
-          [' ma_tk' => 'ma_tk'],  // ❌ sai
+         ['ma_tk'], // ✅ uniqueBy theo cột ma_tk
             [
                 'ten_tk','loai','so_tai_khoan','ngan_hang','is_default_cash',
                 'is_active','opening_balance','opening_date','ghi_chu','updated_at'
@@ -139,7 +156,8 @@ class TaiKhoanTienSeeder extends Seeder
 
         // Lấy map id theo ma_tk để tạo alias an toàn
         $map = DB::table('tai_khoan_tiens')
-            ->whereIn('ma_tk', ['CASH','COMPANY','ZLP','PHAT','ANH_TUYET','HONG_TUYET','ANH_TUYET_CC'])
+            ->whereIn('ma_tk', ['CASH','COMPANY','ZLP','PHAT','ANH_TUYET','HONG_TUYET','ANH_TUYET_CC',
+        'PHG_WEDDING'])
             ->pluck('id', 'ma_tk');
 
         // -------------------------------
@@ -240,6 +258,18 @@ foreach (['MB','MBBank'] as $bank) {
     ];
 }
 
+// PHG_WEDDING – Techcombank 333444555666
+foreach (['TCB','Techcom','Techcombank'] as $bank) {
+    $aliases[] = [
+        'tai_khoan_id'    => $map['PHG_WEDDING'] ?? null,
+        'pattern_bank'    => $bank,
+        'pattern_account' => '333444555666',
+        'pattern_note'    => 'CTY TNHH TIEC CUOI PHAT HOANG GIA',
+        'is_active'       => true,
+        'created_at'      => $now,
+        'updated_at'      => $now,
+    ];
+}
 
         // Bỏ alias không có id
         $aliases = array_values(array_filter($aliases, fn ($a) => !empty($a['tai_khoan_id'])));

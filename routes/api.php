@@ -39,6 +39,9 @@ use App\Modules\Utilities\Zalo\Controllers\ZlWebhookController; // nếu dùng w
 use App\Http\Middleware\Permission as PermV1;
 use App\Http\Middleware\PermissionV2 as PermV2;
 
+use App\Modules\CongNoKH\CongNoKhController; // MỚI: Công nợ khách hàng (read-only)
+
+
 
 
 
@@ -360,6 +363,22 @@ Route::prefix('utilities')->group(function () {
     });
 });
 // ==================================================================================
+
+
+  // ================== Công nợ khách hàng (READ-ONLY) ==================
+  Route::prefix('cong-no')->group(function () {
+      // Tổng hợp theo khách (paging + filter)
+      Route::get('/summary', [CongNoKhController::class, 'summary']);
+
+      // Danh sách các đơn còn nợ (>0) của 1 khách (paging + from/to)
+      Route::get('/customers/{id}', [CongNoKhController::class, 'byCustomer'])
+           ->whereNumber('id');
+
+      // Xuất CSV nhanh (Doanh số / Đã thu / Còn lại / Aging)
+      Route::get('/export', [CongNoKhController::class, 'export']);
+  });
+  // ====================================================================
+
 
 
   // ===== Báo cáo quản trị =====

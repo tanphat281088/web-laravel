@@ -41,6 +41,14 @@ class PermissionV2
         'cash/balances/summary'=> 'cash-ledger',
         'cash/internal-transfers' => 'cash-internal-transfers',
 
+
+                // Công nợ KH (read-only)
+        'cong-no'               => 'quan-ly-cong-no',
+        'cong-no/summary'       => 'quan-ly-cong-no',
+        'cong-no/customers'     => 'quan-ly-cong-no',
+        'cong-no/export'        => 'quan-ly-cong-no',
+
+
         // Các module chuẩn 1:1
         'dashboard'            => 'dashboard',
         'vai-tro'              => 'vai-tro',
@@ -237,6 +245,12 @@ foreach ($permissions as $p) {
         if (preg_match('#^cash/internal-transfers/\d+/unpost$#', $path) === 1 && $method === 'POST') {
             return 'unpost';
         }
+
+                // 8) Đặc thù — Công nợ KH: xem chi tiết 1 khách
+        if (preg_match('#^cong-no/customers/\d+$#', $path) === 1 && $method === 'GET') {
+            return 'show';
+        }
+
 
         // 8) Chuẩn CRUD
         $parts = explode('/', $path);
