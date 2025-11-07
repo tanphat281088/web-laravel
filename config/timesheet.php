@@ -2,7 +2,8 @@
 
 return [
     // BẬT/TẮT các tính năng nâng cao. false = giữ logic cũ (an toàn).
-    'enabled' => env('TIMESHEET_ENABLED', false),
+ 'enabled' => env('TIMESHEET_ENABLED', true),
+
 
     // ===== NEW: Kỳ công bắt đầu vào ngày mấy trong tháng (6 = từ ngày 6 đến ngày 5 tháng sau)
     'cycle_start_day' => (int) env('TIMESHEET_CYCLE_START_DAY', 6),

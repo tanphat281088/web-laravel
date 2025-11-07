@@ -27,61 +27,102 @@ class PhieuThuService
     /**
      * Lấy tất cả dữ liệu
      */
-    public function getAll(array $params = [])
-    {
-        try {
-            // JOIN don_hangs qua derived-table để tránh cột 'nguoi_tao' bị trùng
-            $dhSub = DB::raw('(SELECT id, ma_don_hang, ten_khach_hang, so_dien_thoai FROM don_hangs) as dh');
+public function getAll(array $params = [])
+{
+    try {
+        // ===== Derived table tránh trùng tên cột khi join
+        $dhSub = DB::raw('(SELECT id, ma_don_hang, ten_khach_hang, so_dien_thoai FROM don_hangs) as dh');
 
-            $query = PhieuThu::query()
-                ->leftJoin($dhSub, 'dh.id', '=', 'phieu_thus.don_hang_id')
-                ->with('images');
+        $query = PhieuThu::query()
+            ->leftJoin($dhSub, 'dh.id', '=', 'phieu_thus.don_hang_id')
+            ->with('images');
 
-            // Để FilterWithPagination hoạt động, liệt kê rõ các cột cần lấy
-            $result = FilterWithPagination::findWithPagination(
-                $query,
-                $params,
-                [
-                    'phieu_thus.*',
-                    'dh.ma_don_hang',
-                    'dh.ten_khach_hang',
-                    'dh.so_dien_thoai',
-                ]
-            );
+        // ====== SORTING (an toàn, có whitelist) ======
+        // Chuẩn hoá và map tên cột FE → SQL thực tế
+        $allowedSorts = [
+            'id'                  => 'phieu_thus.id',
+            'created_at'          => 'phieu_thus.created_at',
+            'updated_at'          => 'phieu_thus.updated_at',
+            'ngay_thu'            => 'phieu_thus.ngay_thu',
+            'so_tien'             => 'phieu_thus.so_tien',
+            'ma_phieu_thu'        => 'phieu_thus.ma_phieu_thu',
+            'phuong_thuc_thanh_toan' => 'phieu_thus.phuong_thuc_thanh_toan',
+            // trường join
+            'ma_don_hang'         => 'dh.ma_don_hang',
+            'ten_khach_hang'      => 'dh.ten_khach_hang',
+            'so_dien_thoai'       => 'dh.so_dien_thoai',
+        ];
 
-            // Tạo chuỗi mô tả ở PHP (tránh alias SQL gây lỗi)
-            $collection = $result['collection'];
-            foreach ($collection as $item) {
-                $loaiText = match ((int)($item->loai_phieu_thu ?? 0)) {
-                    1 => 'Thu cho đơn hàng',
-                    2 => 'Thu cho nhiều đơn hàng theo khách hàng',
-                    3 => 'Thu công nợ khách hàng',
-                    5 => 'Thu hoạt động tài chính', // MỚI: loại 5
-                    default => 'Thu khác',
-                };
+        // Nhận các key sort từ FE (hỗ trợ nhiều biến thể)
+        $sortBy  = $params['sort_by']  ?? $params['order_by'] ?? $params['sort']  ?? null;
+        $sortDir = $params['sort_dir'] ?? $params['order_dir'] ?? $params['order'] ?? null;
 
-                $maDonHang   = $item->ma_don_hang ?? 'N/A';
-                $tenKhach    = $item->ten_khach_hang ?? 'N/A';
-                $soDienThoai = $item->so_dien_thoai ?? 'N/A';
-
-                $item->mo_ta_phieu_thu = "{$loaiText} - {$maDonHang} - {$tenKhach} - {$soDienThoai}";
-            }
-
-            return [
-                'data' => $collection,
-                'total' => $result['total'],
-                'pagination' => [
-                    'current_page'  => $result['current_page'],
-                    'last_page'     => $result['last_page'],
-                    'from'          => $result['from'],
-                    'to'            => $result['to'],
-                    'total_current' => $result['total_current'],
-                ],
-            ];
-        } catch (Exception $e) {
-            throw new Exception('Lỗi khi lấy danh sách: ' . $e->getMessage());
+        // Nếu FE gửi hợp lệ → apply
+        if ($sortBy && isset($allowedSorts[$sortBy])) {
+            $dir = strtolower((string) $sortDir) === 'asc' ? 'asc' : 'desc';
+            $query->orderBy($allowedSorts[$sortBy], $dir)
+                  ->orderBy('phieu_thus.id', $dir); // ổn định thứ tự
+        } else {
+            // MẶC ĐỊNH: mới nhất trước theo created_at
+            $query->orderBy('phieu_thus.created_at', 'desc')
+                  ->orderBy('phieu_thus.id', 'desc');
+            // đồng thời “gợi ý” cho FilterWithPagination nếu nó dùng params để order
+            $params['sort_by']   = $params['sort_by']   ?? 'phieu_thus.created_at';
+            $params['sort_dir']  = $params['sort_dir']  ?? 'desc';
+            $params['order_by']  = $params['order_by']  ?? 'phieu_thus.created_at';
+            $params['order_dir'] = $params['order_dir'] ?? 'desc';
+            // ➕ thêm 2 dòng dự phòng cho lib cũ:
+$params['sort']      = $params['sort']      ?? 'created_at';
+$params['order']     = $params['order']     ?? 'desc';
         }
+        // ====== END SORTING ======
+
+        // ===== Chạy paginate qua helper chuẩn của anh
+        $result = FilterWithPagination::findWithPagination(
+            $query,
+            $params,
+            [
+                'phieu_thus.*',
+                'dh.ma_don_hang',
+                'dh.ten_khach_hang',
+                'dh.so_dien_thoai',
+            ]
+        );
+
+        // ===== Bổ sung mô tả hiển thị cho FE
+        $collection = $result['collection'];
+        foreach ($collection as $item) {
+            $loaiText = match ((int) ($item->loai_phieu_thu ?? 0)) {
+                1 => 'Thu cho đơn hàng',
+                2 => 'Thu cho nhiều đơn hàng theo khách hàng',
+                3 => 'Thu công nợ khách hàng',
+                5 => 'Thu hoạt động tài chính',
+                default => 'Thu khác',
+            };
+
+            $maDonHang   = $item->ma_don_hang ?? 'N/A';
+            $tenKhach    = $item->ten_khach_hang ?? 'N/A';
+            $soDienThoai = $item->so_dien_thoai ?? 'N/A';
+
+            $item->mo_ta_phieu_thu = "{$loaiText} - {$maDonHang} - {$tenKhach} - {$soDienThoai}";
+        }
+
+        return [
+            'data' => $collection,
+            'total' => $result['total'],
+            'pagination' => [
+                'current_page'  => $result['current_page'],
+                'last_page'     => $result['last_page'],
+                'from'          => $result['from'],
+                'to'            => $result['to'],
+                'total_current' => $result['total_current'],
+            ],
+        ];
+    } catch (Exception $e) {
+        throw new Exception('Lỗi khi lấy danh sách: ' . $e->getMessage());
     }
+}
+
 
     /**
      * Lấy dữ liệu theo ID

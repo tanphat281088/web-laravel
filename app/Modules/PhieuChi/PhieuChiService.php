@@ -24,12 +24,20 @@ class PhieuChiService
             // Tạo query cơ bản
             $query = PhieuChi::query()->with('images');
 
+            $query->select('phieu_chis.*')
+      ->selectRaw("(SELECT COUNT(1) FROM so_quy_entries sq WHERE sq.ref_type='phieu_chi' AND sq.ref_id=phieu_chis.id) AS has_ledger");
+
+
             // Sử dụng FilterWithPagination để xử lý filter và pagination
-            $result = FilterWithPagination::findWithPagination(
-                $query,
-                $params,
-                ['phieu_chis.*'] // Columns cần select
-            );
+$result = FilterWithPagination::findWithPagination(
+    $query,
+    $params,
+    [
+        'phieu_chis.*',
+        DB::raw("(SELECT COUNT(1) FROM so_quy_entries sq WHERE sq.ref_type='phieu_chi' AND sq.ref_id=phieu_chis.id) AS has_ledger"),
+    ]
+);
+
 
             return [
                 'data' => $result['collection'],
@@ -131,16 +139,8 @@ if ($data['phuong_thuc_thanh_toan'] === 2) { // 2 = Chuyển khoản
 
                 return $result;
             }
+// (TẮT auto-post) Chỉ ghi sổ khi người dùng bấm "Ghi sổ" (endpoint /phieu-chi/{id}/post)
 
-// Mirror vào sổ quỹ (an toàn, idempotent)
-// Mirror vào sổ quỹ (an toàn, idempotent)
-if ($result instanceof \App\Models\PhieuChi) {
-    // Gắn tạm tai_khoan_id chỉ để ledger map đúng (không save vào DB)
-    if (!empty($tkForLedger)) {
-        $result->setAttribute('tai_khoan_id', (int)$tkForLedger);
-    }
-    app(\App\Services\Cash\CashLedgerService::class)->recordPayment($result);
-}
 
 
             DB::commit();
@@ -156,10 +156,48 @@ if ($result instanceof \App\Models\PhieuChi) {
     /**
      * Cập nhật dữ liệu
      */
-    public function update($id, array $data)
-    {
-        return CustomResponse::error('Không thể cập nhật phiếu chi');
+public function update($id, array $data)
+{
+    try {
+        $model = PhieuChi::find($id);
+        if (!$model) {
+            return CustomResponse::error('Không tìm thấy phiếu chi');
+        }
+
+        // ❗ CHỈ chặn khi ĐÃ GHI SỔ (yêu cầu Hủy ghi sổ trước)
+        $hasLedger = DB::table('so_quy_entries')
+            ->where('ref_type', 'phieu_chi')
+            ->where('ref_id', $model->id)
+            ->exists();
+        if ($hasLedger) {
+            return CustomResponse::error('Phiếu chi đã ghi sổ. Vui lòng Hủy ghi sổ trước khi cập nhật.');
+        }
+
+        // Whitelist trường cho phép sửa
+        // - Loại 3 (Chi khác): cho phép sửa các trường kế toán chính
+        // - Loại 1/2/4: để an toàn, chỉ cho phép sửa ghi chú (không đụng phân bổ công nợ/PNK)
+        $allow = ['category_id','so_tien','nguoi_nhan','phuong_thuc_thanh_toan','so_tai_khoan','ngan_hang','ly_do_chi','ghi_chu'];
+        if ((int)$model->loai_phieu_chi !== 3) {
+            $allow = ['ghi_chu'];
+        }
+
+        $payload = array_intersect_key($data, array_flip($allow));
+        if (empty($payload)) {
+            return CustomResponse::error('Không có dữ liệu hợp lệ để cập nhật');
+        }
+
+        $model->fill($payload);
+        $model->save();
+
+        return $model->fresh();
+    } catch (\Exception $e) {
+        return CustomResponse::error($e->getMessage());
     }
+}
+
+
+
+
 
     /**
      * Xóa dữ liệu

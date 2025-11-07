@@ -41,7 +41,12 @@ use App\Http\Middleware\PermissionV2 as PermV2;
 
 use App\Modules\CongNoKH\CongNoKhController; // MỚI: Công nợ khách hàng (read-only)
 
+use App\Http\Controllers\Cash\CashAuditController;  // ⬅️ thêm dòng này
 
+
+
+use App\Modules\NhanSu\Payroll\BangLuongMeController;         // MỚI: Bảng lương (của tôi)
+use App\Modules\NhanSu\Payroll\BangLuongAdminController;      // MỚI: Bảng lương (Quản lý)
 
 
 
@@ -121,15 +126,24 @@ Route::group([
 
 
   // Authenticated
-  Route::group(['prefix' => 'auth'], function () {
+Route::group(['prefix' => 'auth'], function () {
+    // Giữ nguyên logout (vẫn qua permission nếu bạn muốn)
     Route::post('logout', [AuthController::class, 'logout']);
-    Route::post('me', [AuthController::class, 'me']);
-        Route::match(['GET','POST'], 'me', [AuthController::class, 'me']);
 
-    Route::post('profile', [AuthController::class, 'updateProfile']);
-    Route::post('change-password', [AuthController::class, 'changePassword']);
+    // ===== Chỉ yêu cầu JWT, BỎ kiểm tra permission cho các API hồ sơ =====
+    Route::post('me', [AuthController::class, 'me'])
+         ->withoutMiddleware([PermV1::class, PermV2::class]);
 
-  });
+    Route::match(['GET','POST'], 'me', [AuthController::class, 'me'])
+         ->withoutMiddleware([PermV1::class, PermV2::class]);
+
+    Route::post('profile', [AuthController::class, 'updateProfile'])
+         ->withoutMiddleware([PermV1::class, PermV2::class]);
+
+    Route::post('change-password', [AuthController::class, 'changePassword'])
+         ->withoutMiddleware([PermV1::class, PermV2::class]);
+});
+
 
   // Lấy danh sách phân quyền
 // Lấy danh sách phân quyền (auto V1/V2 theo flag PERMISSION_ENGINE)
@@ -311,6 +325,9 @@ Route::get('danh-sach-phan-quyen', [\App\Http\Controllers\Api\PermissionRegistry
     Route::get('/download-template-excel', [\App\Modules\PhieuChi\PhieuChiController::class, 'downloadTemplateExcel']);
     Route::post('/', [\App\Modules\PhieuChi\PhieuChiController::class, 'store']);
     Route::get('/{id}', [\App\Modules\PhieuChi\PhieuChiController::class, 'show']);
+    Route::post('/{id}/post',   [\App\Modules\PhieuChi\PhieuChiController::class, 'post'])->whereNumber('id');
+Route::post('/{id}/unpost', [\App\Modules\PhieuChi\PhieuChiController::class, 'unpost'])->whereNumber('id');
+
     Route::put('/{id}', [\App\Modules\PhieuChi\PhieuChiController::class, 'update']);
     Route::delete('/{id}', [\App\Modules\PhieuChi\PhieuChiController::class, 'destroy']);
     Route::post('/import-excel', [\App\Modules\PhieuChi\PhieuChiController::class, 'importExcel']);
@@ -492,6 +509,14 @@ Route::prefix('cash')->group(function () {
     Route::get('/ledger',            [\App\Http\Controllers\Cash\CashLedgerController::class,  'ledger']);
     Route::get('/balances',          [\App\Http\Controllers\Cash\CashLedgerController::class,  'balances']);
     Route::get('/balances/summary',  [\App\Http\Controllers\Cash\CashLedgerController::class,  'summary']);
+
+        // ===== KIỂM TOÁN (Tra soát lệch phiếu thu CK ↔ sổ quỹ) =====
+    Route::get('/audit-delta',      [CashAuditController::class, 'audit'])
+        ->middleware('perm:kiem-toan.index'); // quyền xem
+
+    Route::post('/audit-delta/fix', [CashAuditController::class, 'fix'])
+        ->middleware('perm:kiem-toan.edit');  // quyền áp dụng fix
+
       // Internal transfers (create draft, post/unpost, list)
   Route::prefix('internal-transfers')->group(function () {
       Route::get('/',              [\App\Http\Controllers\Cash\InternalTransferController::class, 'index']);
@@ -624,6 +649,36 @@ Route::middleware(['jwt', env('PERMISSION_ENGINE', 'permission') === 'v2' ? Perm
             Route::patch('/unlock',      [BangCongAdminOpsController::class,'unlock'])->name('bang-cong.unlock');
             Route::post('/recompute-all',[BangCongAdminOpsController::class,'recomputeAll'])->name('bang-cong.recompute_all');
         });
+
+        // ===== Bảng lương =====
+        Route::prefix('bang-luong')->group(function () {
+            // Bảng lương của tôi (chỉ xem lương của user hiện tại)
+            Route::get('/my', [BangLuongMeController::class, 'myIndex'])
+                ->name('bang-luong.my');
+
+            // Bảng lương (Quản lý) — xem 1 người theo tháng
+            Route::get('/', [BangLuongAdminController::class, 'adminShow'])
+                ->name('bang-luong.show');
+
+            // Danh sách lương toàn công ty theo tháng (paging)
+            Route::get('/list', [BangLuongAdminController::class, 'adminList'])
+                ->name('bang-luong.index');
+
+            // Tính lại lương (1 người hoặc tất cả) — tôn trọng locked
+            Route::post('/recompute', [BangLuongAdminController::class, 'recompute'])
+                ->name('bang-luong.recompute');
+
+            // Khóa/Mở khóa bảng lương theo tháng (1 người hoặc tất cả)
+            Route::patch('/lock', [BangLuongAdminController::class, 'lock'])
+                ->name('bang-luong.lock');
+            Route::patch('/unlock', [BangLuongAdminController::class, 'unlock'])
+                ->name('bang-luong.unlock');
+
+            // Cập nhật thủ công các khoản cộng/trừ (khi chưa locked)
+            Route::patch('/update-manual', [BangLuongAdminController::class, 'updateManual'])
+                ->name('bang-luong.update');
+        });
+
 
         // ===== Ngày lễ (Holiday) =====
         Route::prefix('holiday')->group(function () {

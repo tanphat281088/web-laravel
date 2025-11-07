@@ -16,6 +16,11 @@ class PermissionV2
         'attendance'           => 'nhan-su', // alias cũ (nếu còn dùng)
         'nhan-su'              => 'nhan-su',
 
+                // Nhân sự → Bảng lương
+        'nhan-su/bang-luong/my' => 'payrollMe', // Bảng lương (của tôi)
+        'nhan-su/bang-luong'    => 'payroll',   // Bảng lương (Quản lý) + list
+
+
         // CSKH (parent/child)
         'cskh/points'          => 'cskh-points',
         'cskh-points'          => 'cskh-points',
@@ -40,6 +45,11 @@ class PermissionV2
         'cash/balances'        => 'cash-ledger',
         'cash/balances/summary'=> 'cash-ledger',
         'cash/internal-transfers' => 'cash-internal-transfers',
+
+        // Kiểm toán (Tra soát lệch phiếu ↔ sổ quỹ)
+'cash/audit-delta'      => 'kiem-toan',
+'cash/audit-delta/fix'  => 'kiem-toan',
+
 
 
                 // Công nợ KH (read-only)
@@ -250,6 +260,42 @@ foreach ($permissions as $p) {
         if (preg_match('#^cong-no/customers/\d+$#', $path) === 1 && $method === 'GET') {
             return 'show';
         }
+
+        // Đặc thù — Phiếu chi: post/unpost
+        if (preg_match('#^phieu-chi/\d+/post$#', $path) === 1 && $method === 'POST') {
+            return 'post';
+        }
+        if (preg_match('#^phieu-chi/\d+/unpost$#', $path) === 1 && $method === 'POST') {
+            return 'unpost';
+        }
+
+// Đặc thù — Kiểm toán (audit delta): GET audit = index; POST fix = edit
+if (preg_match('#^cash/audit-delta$#', $path) === 1 && $method === 'GET') {
+    return 'index';
+}
+if (preg_match('#^cash/audit-delta/fix$#', $path) === 1 && $method === 'POST') {
+    return 'edit'; // KHÔNG phải create
+}
+
+        // Đặc thù — Payroll (Bảng lương)
+        // POST /nhan-su/bang-luong/recompute -> recompute
+        if (preg_match('#^nhan-su/bang-luong/recompute$#', $path) === 1 && $method === 'POST') {
+            return 'recompute';
+        }
+        // PATCH /nhan-su/bang-luong/lock -> lock
+        if (preg_match('#^nhan-su/bang-luong/lock$#', $path) === 1 && $method === 'PATCH') {
+            return 'lock';
+        }
+        // PATCH /nhan-su/bang-luong/unlock -> unlock
+        if (preg_match('#^nhan-su/bang-luong/unlock$#', $path) === 1 && $method === 'PATCH') {
+            return 'unlock';
+        }
+        // PATCH /nhan-su/bang-luong/update-manual -> update (đặc thù)
+        if (preg_match('#^nhan-su/bang-luong/update-manual$#', $path) === 1 && $method === 'PATCH') {
+            return 'update';
+        }
+        // GET /nhan-su/bang-luong/list -> index (để CRUD mặc định xử lý GET no-id = index)
+        // GET /nhan-su/bang-luong (adminShow với ?user_id=) sẽ rơi về index (không check query ở đây).
 
 
         // 8) Chuẩn CRUD

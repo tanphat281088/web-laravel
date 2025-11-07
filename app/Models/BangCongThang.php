@@ -34,7 +34,7 @@ class BangCongThang extends Model
     ];
 
     protected $casts = [
-        'so_ngay_cong'           => 'integer',
+        'so_ngay_cong' => 'decimal:2',
         'so_gio_cong'            => 'integer',
         'di_tre_phut'            => 'integer',
         've_som_phut'            => 'integer',

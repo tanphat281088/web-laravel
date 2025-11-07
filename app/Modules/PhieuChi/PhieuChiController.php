@@ -73,10 +73,14 @@ class PhieuChiController extends Controller
   /**
    * Cập nhật PhieuChi
    */
-  public function update(UpdatePhieuChiRequest $request, $id)
-  {
-    return CustomResponse::error('Không thể cập nhật phiếu chi');
+public function update(UpdatePhieuChiRequest $request, $id)
+{
+  $result = $this->phieuChiService->update($id, $request->validated());
+  if ($result instanceof \Illuminate\Http\JsonResponse) {
+    return $result;
   }
+  return CustomResponse::success($result, 'Cập nhật thành công');
+}
 
   /**
    * Xóa PhieuChi
@@ -89,6 +93,44 @@ class PhieuChiController extends Controller
     }
     return CustomResponse::success([], 'Xóa thành công');
   }
+
+
+  /**
+   * POST /phieu-chi/{id}/post  → Ghi sổ (idempotent)
+   */
+  public function post($id)
+  {
+    $row = \App\Models\PhieuChi::find((int)$id);
+    if (!$row) return CustomResponse::error('Không tìm thấy phiếu chi');
+
+    // Nếu đã có bút toán thì coi như đã post (idempotent)
+    $exists = \Illuminate\Support\Facades\DB::table('so_quy_entries')
+      ->where('ref_type', 'phieu_chi')->where('ref_id', $row->id)->exists();
+    if ($exists) return CustomResponse::success($row, 'Phiếu chi đã được ghi sổ trước đó');
+
+    // Gắn tạm tài khoản nếu FE đã chọn (không lưu DB)
+    if (!empty($row->tai_khoan_id)) {
+      $row->setAttribute('tai_khoan_id', (int)$row->tai_khoan_id);
+    }
+    app(\App\Services\Cash\CashLedgerService::class)->recordPayment($row);
+
+    return CustomResponse::success($row, 'Ghi sổ phiếu chi thành công');
+  }
+
+  /**
+   * POST /phieu-chi/{id}/unpost  → Gỡ sổ (idempotent)
+   */
+  public function unpost($id)
+  {
+    $row = \App\Models\PhieuChi::find((int)$id);
+    if (!$row) return CustomResponse::error('Không tìm thấy phiếu chi');
+
+    app(\App\Services\Cash\CashLedgerService::class)->removePayment($row);
+
+    return CustomResponse::success($row, 'Đã hủy ghi sổ (gỡ bút toán) thành công');
+  }
+
+
 
   /**
    * Lấy danh sách PhieuChi dạng option

@@ -53,9 +53,33 @@ return [
 
   // ===== TÀI CHÍNH & BÁO CÁO =====
   ['name' => 'phieu-thu',          'actions' => ['showMenu'=>false,'index'=>false,'show'=>false,'create'=>false,'edit'=>false,'delete'=>false,'export'=>false]],
-  ['name' => 'phieu-chi',          'actions' => ['showMenu'=>false,'index'=>false,'show'=>false,'create'=>false,'edit'=>false,'delete'=>false,'export'=>false]],
+['name' => 'phieu-chi', 'actions' => [
+    'showMenu' => false,
+    'index'    => false,
+    'show'     => false,
+    'create'   => false,
+    'edit'     => false,
+    'delete'   => false,
+    // ✅ Action đặc thù:
+    'post'     => false, // Ghi sổ phiếu chi
+    'unpost'   => false, // Hủy ghi sổ phiếu chi
+    'export'   => false,
+]],
+
   ['name' => 'bao-cao-thu-chi',    'actions' => ['showMenu'=>false,'index'=>false,'show'=>false,'create'=>false,'edit'=>false,'delete'=>false,'export'=>false]],
   ['name' => 'bao-cao-quan-tri',   'actions' => ['showMenu'=>false,'index'=>false,'show'=>false,'create'=>false,'edit'=>false,'delete'=>false,'export'=>false]],
+
+    // ===== KIỂM TOÁN (Tra soát lệch phiếu ↔ sổ quỹ) =====
+  ['name' => 'kiem-toan',          'actions' => [
+      'showMenu' => false,   // hiện/ẩn tab/menu
+      'index'    => false,   // quyền xem tra soát
+      'show'     => false,
+      'create'   => false,
+      'edit'     => false,   // quyền áp dụng fix (bù/điều chỉnh)
+      'delete'   => false,
+      'export'   => false,   // nếu sau này có Export CSV
+  ]],
+
 
   // ===== CSKH =====
   ['name' => 'cskh',               'actions' => ['showMenu'=>false,'index'=>false]], // cha (menu)
@@ -97,6 +121,37 @@ return [
 ]],
 
 
+
+// ===== NHÂN SỰ → BẢNG LƯƠNG =====
+['name' => 'payrollMe', 'actions' => [
+    // 7 action chuẩn (dù không dùng hết, vẫn khai báo để form Vai trò không lỗi)
+    'showMenu' => false,
+    'index'    => false,
+    'show'     => false,
+    'create'   => false,
+    'edit'     => false,
+    'delete'   => false,
+    'export'   => false,
+]],
+
+['name' => 'payroll', 'actions' => [
+    // 7 action chuẩn — thêm đủ để UI “Tất cả” không văng lỗi
+    'showMenu' => false,
+    'index'    => false,   // GET /nhan-su/bang-luong/list
+    'show'     => false,   // GET /nhan-su/bang-luong?user_id=&thang=
+    'create'   => false,
+    'edit'     => false,
+    'delete'   => false,
+    'export'   => false,
+    // Action đặc thù của Payroll
+    'recompute'=> false,   // POST /nhan-su/bang-luong/recompute
+    'lock'     => false,   // PATCH /nhan-su/bang-luong/lock
+    'unlock'   => false,   // PATCH /nhan-su/bang-luong/unlock
+    'update'   => false,   // PATCH /nhan-su/bang-luong/update-manual
+]],
+
+
+
   // ===== NHÂN SỰ =====
 ['name' => 'nhan-su', 'actions' => [
   'showMenu' => false,
@@ -107,5 +162,8 @@ return [
   'delete'   => false,
   'export'   => false,
 ]],
+
+
+
 
 ];
