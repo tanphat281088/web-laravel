@@ -1,0 +1,2 @@
+_HiStOrY_V2_
+use\040Maatwebsite\134Excel\134Facades\134Excel;\012use\040App\134Imports\134SanPhamImport;\012$path\040=\040storage_path('app/import/sanpham4112025.xlsx');\040\040\040//\040đúng\040tên\040file\040bạn\040đã\040up\012if\040(!file_exists($path))\040{\040echo\040"MISSING:\040$path\134n";\040exit(1);\040}\012$imp\040=\040new\040SanPhamImport();\012Excel::import($imp,\040$path);\012echo\040"===\040IMPORT\040DONE\040===\134n";\012echo\040"ThanhCong:\040",\040$imp->getThanhCong(),\040"\134n";\012echo\040"ThatBai\040\040:\040",\040$imp->getThatBai(),\040\040\040"\134n";
