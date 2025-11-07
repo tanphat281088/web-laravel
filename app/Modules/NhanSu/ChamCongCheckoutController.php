@@ -8,6 +8,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use App\Models\ChamCong;
 use App\Models\DiemLamViec;
+use App\Services\Timesheet\BangCongService;   // NEW
+use App\Services\Payroll\BangLuongService;    // NEW
+
 use Carbon\Carbon;
 use Throwable;
 
@@ -27,12 +30,16 @@ class ChamCongCheckoutController extends BaseController
         }
 
         // ===== Validate input =====
-        $v = Validator::make($request->all(), [
-            'lat'        => ['required', 'numeric', 'between:-90,90'],
-            'lng'        => ['required', 'numeric', 'between:-180,180'],
-            'accuracy_m' => ['nullable', 'integer', 'min:0'],
-            'device_id'  => ['nullable', 'string', 'max:100'],
-        ]);
+$v = Validator::make($request->all(), [
+    'lat'            => ['required', 'numeric', 'between:-90,90'],
+    'lng'            => ['required', 'numeric', 'between:-180,180'],
+    'accuracy_m'     => ['nullable', 'integer', 'min:0'],
+    'device_id'      => ['nullable', 'string', 'max:100'],
+    // ===== NEW flags (optional) =====
+    'also_timesheet' => ['nullable', 'boolean'],  // tổng hợp bảng công kỳ hiện tại (6→5)
+    'also_payroll'   => ['nullable', 'boolean'],  // sau khi tổng hợp công thì chạy luôn bảng lương
+]);
+
         if ($v->fails()) {
             return $this->respond(false, 'VALIDATION_ERROR', $v->errors(), 422);
         }
@@ -99,20 +106,54 @@ class ChamCongCheckoutController extends BaseController
             ->latest('checked_at')
             ->first();
         if ($recent) {
-            return $this->respond(true, 'CHECKOUT_OK', [
-                'log' => [
-                    'id'         => $recent->id,
-                    'desc'       => $recent->shortDesc(),
-                    'checked_at' => $recent->checked_at,
-                    'distance_m' => $recent->distance_m,
-                    'within'     => (bool) $recent->within_geofence,
-                ],
-                'workpoint' => [
-                    'id'         => (int) $diem->id,
-                    'ten'        => $diem->ten,
-                    'ban_kinh_m' => (int) $diem->ban_kinh_m,
-                ],
-            ], 200);
+// ===== NEW: optionally recompute timesheet & payroll for current cycle (6→5)
+$didTs = false; $didPr = false; $cycle = null;
+if ($request->boolean('also_timesheet', false) || $request->boolean('also_payroll', false)) {
+    try {
+        // Xác định kỳ công (YYYY-MM) theo quy tắc 6→5 tại thời điểm checkout
+        $cycle = BangCongService::cycleLabelForDate($now);
+        if ($request->boolean('also_timesheet', false)) {
+            /** @var BangCongService $ts */
+            $ts = app(BangCongService::class);
+            $ts->computeMonth($cycle, (int)$userId);   // tôn trọng locked trong service
+            $didTs = true;
+        }
+        if ($request->boolean('also_payroll', false)) {
+            /** @var BangLuongService $payroll */
+            $payroll = app(BangLuongService::class);
+            $payroll->computeMonth($cycle, (int)$userId); // tôn trọng locked snapshot lương
+            $didPr = true;
+        }
+    } catch (Throwable $e) {
+        \Log::warning('Post-checkout recompute failed', [
+            'uid' => $userId, 'cycle' => $cycle, 'err' => $e->getMessage()
+        ]);
+    }
+}
+
+return $this->respond(true, 'CHECKOUT_OK', [
+    'log' => [
+        'id'         => $log->id,
+        'desc'       => $log->shortDesc(),
+        'checked_at' => $log->checked_at,
+        'distance_m' => $log->distance_m,
+        'within'     => (bool) $log->within_geofence,
+    ],
+    'workpoint' => [
+        'id'         => (int) $diem->id,
+        'ten'        => $diem->ten,
+        'ban_kinh_m' => (int) $diem->ban_kinh_m,
+    ],
+    // ===== NEW: meta thông báo FE biết có chạy tổng hợp không
+    'recomputed' => [
+        'cycle'         => $cycle,
+        'timesheet'     => $didTs,
+        'payroll'       => $didPr,
+        'requested_ts'  => (bool)$request->boolean('also_timesheet', false),
+        'requested_pr'  => (bool)$request->boolean('also_payroll', false),
+    ],
+], 201);
+
         }
 
         try {

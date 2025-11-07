@@ -24,13 +24,17 @@ public function index(Request $request)
     if (!$userId) {
         return $this->respond(false, 'UNAUTHORIZED', null, 401);
     }
+$v = Validator::make($request->all(), [
+    'from'     => ['nullable', 'date_format:Y-m-d'],
+    'to'       => ['nullable', 'date_format:Y-m-d'],
+    'page'     => ['nullable', 'integer', 'min:1'],
+    'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
+    // ===== NEW =====
+    'type'     => ['nullable', 'in:checkin,checkout'],
+    'within'   => ['nullable', 'in:0,1'],
+    'order'    => ['nullable', 'in:asc,desc'],
+]);
 
-    $v = Validator::make($request->all(), [
-        'from'     => ['nullable', 'date_format:Y-m-d'],
-        'to'       => ['nullable', 'date_format:Y-m-d'],
-        'page'     => ['nullable', 'integer', 'min:1'],
-        'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
-    ]);
     if ($v->fails()) {
         return $this->respond(false, 'VALIDATION_ERROR', $v->errors(), 422);
     }
@@ -41,12 +45,33 @@ public function index(Request $request)
 
     $perPage = (int) ($request->input('per_page', 20));
     $page    = (int) ($request->input('page', 1));
+    $type   = $request->input('type'); // 'checkin' | 'checkout' | null
+$within = $request->has('within') ? (int)$request->input('within') : null; // 0|1|null
+$order  = strtolower((string)$request->input('order', 'desc')) === 'asc' ? 'asc' : 'desc';
+
 
     try {
-        $query = ChamCong::query()
-            ->ofUser($userId)
-            ->between($from . ' 00:00:00', $to . ' 23:59:59')
-            ->orderByDesc('checked_at');
+      $query = ChamCong::query()
+    ->ofUser($userId)
+    ->between($from . ' 00:00:00', $to . ' 23:59:59');
+
+// ====== DÁN 3 FILTER NÀY NGAY DƯỚI DÒNG TRÊN ======
+if ($type) {
+    // gọi scope ->checkin() hoặc ->checkout()
+    $query->{$type}();
+}
+if ($within !== null) {
+    $query->where('within_geofence', (bool)$within);
+}
+// ================================================
+
+// THAY orderByDesc('checked_at') bằng block dưới:
+if ($order === 'asc') {
+    $query->orderBy('checked_at', 'asc');
+} else {
+    $query->orderBy('checked_at', 'desc');
+}
+
 
         // (Tuỳ nhu cầu) Nếu muốn show tên user ở client thì eager-load users,
         // nhưng CHỈ lấy các cột chắc chắn tồn tại để tránh lỗi:
@@ -70,15 +95,22 @@ public function index(Request $request)
                 'short_desc' => $c->shortDesc(),
                 'ngay'       => $c->checked_at ? $c->checked_at->toDateString() : null,
                 'gio_phut'   => $c->checked_at ? $c->checked_at->format('H:i') : null,
+                'weekday'    => $c->checked_at ? $c->checked_at->locale('vi')->isoFormat('ddd') : null, // T2..CN
+'source'     => $c->device_id ? 'device' : ($c->ip ? 'ip' : null),
+
             ];
         });
 
         return $this->respond(true, 'MY_ATTENDANCE', [
             // ✅ Chuẩn hóa về "filter" để FE dùng chung
-            'filter' => [
-                'from' => $from,
-                'to'   => $to,
-            ],
+  'filter' => [
+    'from'   => $from,
+    'to'     => $to,
+    'type'   => $type,
+    'within' => $within,
+    'order'  => $order,
+],
+
             'pagination' => [
                 'total'        => $paginator->total(),
                 'per_page'     => $paginator->perPage(),

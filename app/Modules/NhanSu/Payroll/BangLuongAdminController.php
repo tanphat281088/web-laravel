@@ -111,39 +111,82 @@ class BangLuongAdminController extends BaseController
         $paginator = $q->paginate($perPage, ['*'], 'page', $page);
 
         // HOTFIX: map an toàn để không nổ 500
-        $raw = $paginator->items();
-        $items = array_map(function ($r) {
-            $name = null;
-            if (isset($r->user) && $r->user) {
-                $name = $r->user->name ?? $r->user->email ?? null;
-            }
-            return [
-                'id'              => (int) $r->id,
-                'user_id'         => (int) $r->user_id,
-                'user_name'       => $name,
-                'thang'           => (string) $r->thang,
-                'luong_co_ban'    => (int) $r->luong_co_ban,
-                'cong_chuan'      => (int) $r->cong_chuan,
-                'he_so'           => (float) $r->he_so,
-                'so_ngay_cong'    => (float) $r->so_ngay_cong,
-                'so_gio_cong'     => (int) $r->so_gio_cong,
-                'phu_cap'         => (int) $r->phu_cap,
-                'thuong'          => (int) $r->thuong,
-                'phat'            => (int) $r->phat,
-                'luong_theo_cong' => (int) $r->luong_theo_cong,
-                'bhxh'            => (int) $r->bhxh,
-                'bhyt'            => (int) $r->bhyt,
-                'bhtn'            => (int) $r->bhtn,
-                'khau_tru_khac'   => (int) $r->khau_tru_khac,
-                'tam_ung'         => (int) $r->tam_ung,
-                'thuc_nhan'       => (int) $r->thuc_nhan,
-                'locked'          => (bool) $r->locked,
-                'computed_at'     => $r->computed_at ? $r->computed_at->toDateTimeString() : null,
-                'ghi_chu'         => $r->ghi_chu,
-                'created_at'      => $r->created_at ? $r->created_at->toDateTimeString() : null,
-                'updated_at'      => $r->updated_at ? $r->updated_at->toDateTimeString() : null,
-            ];
-        }, $raw);
+$items = array_map(function ($r) {
+    $name = null;
+    if (isset($r->user) && $r->user) {
+        $name = $r->user->name ?? $r->user->email ?? null;
+    }
+
+    // Decode ghi_chu (có thể là json string hoặc array)
+    $note = null;
+    if (!empty($r->ghi_chu)) {
+        if (is_string($r->ghi_chu)) {
+            try { $note = json_decode($r->ghi_chu, true, 512, JSON_THROW_ON_ERROR); }
+            catch (\Throwable $e) { $note = null; }
+        } elseif (is_array($r->ghi_chu) || $r->ghi_chu instanceof \JsonSerializable) {
+            $note = (array) $r->ghi_chu;
+        }
+    }
+    $mode        = $note['mode']        ?? null;
+    $base        = isset($note['base']) ? (int)$note['base'] : null;
+    $daily_rate  = isset($note['daily_rate']) ? (int)$note['daily_rate'] : null;
+    $cong_eff    = isset($note['cong_chuan']) ? (int)$note['cong_chuan'] : (int)$r->cong_chuan;
+    $bh_base     = isset($note['bh_base']) ? (int)$note['bh_base'] : null;
+
+    // P/Q/R/T/U theo quy ước Excel: U = P − Q − R − T
+    $gross = (int)$r->luong_theo_cong + (int)$r->phu_cap + (int)$r->thuong - (int)$r->phat; // P
+    $qIns  = (int)$r->bhxh + (int)$r->bhyt + (int)$r->bhtn;                                   // Q
+    $rDed  = (int)$r->khau_tru_khac;                                                          // R
+    $tAdv  = (int)$r->tam_ung;                                                                // T
+    $net   = (int)$r->thuc_nhan;                                                              // U (đã có)
+
+    return [
+        'id'              => (int) $r->id,
+        'user_id'         => (int) $r->user_id,
+        'user_name'       => $name,
+        'thang'           => (string) $r->thang,
+
+        'luong_co_ban'    => (int) $r->luong_co_ban,
+        'cong_chuan'      => $cong_eff,
+        'he_so'           => (float) $r->he_so,
+        'so_ngay_cong'    => (float) $r->so_ngay_cong,
+        'so_gio_cong'     => (int)  $r->so_gio_cong,
+
+        'luong_theo_cong' => (int)  $r->luong_theo_cong,
+        'phu_cap'         => (int)  $r->phu_cap,
+        'thuong'          => (int)  $r->thuong,
+        'phat'            => (int)  $r->phat,
+
+        'bhxh'            => (int)  $r->bhxh,
+        'bhyt'            => (int)  $r->bhyt,
+        'bhtn'            => (int)  $r->bhtn,
+        'khau_tru_khac'   => $rDed,
+        'tam_ung'         => $tAdv,
+
+        'P_gross'         => $gross,
+        'Q_insurance'     => $qIns,
+        'R_deduct_other'  => $rDed,
+        'T_advance'       => $tAdv,
+        'U_net'           => $net,
+
+        // metrics phụ để hiển thị trong modal/FE
+        'metrics' => [
+            'mode'       => $mode,
+            'base'       => $base,
+            'daily_rate' => $daily_rate,
+            'bh_base'    => $bh_base,
+        ],
+
+        'locked'          => (bool) $r->locked,
+        'computed_at'     => $r->computed_at ? $r->computed_at->toDateTimeString() : null,
+        'created_at'      => $r->created_at ? $r->created_at->toDateTimeString() : null,
+        'updated_at'      => $r->updated_at ? $r->updated_at->toDateTimeString() : null,
+
+        // giữ nguyên ghi_chu (raw) để debug nếu cần
+        'ghi_chu'         => $r->ghi_chu,
+    ];
+}, $raw);
+
 
         return $this->success([
             'thang'      => $thang,
@@ -200,37 +243,76 @@ class BangLuongAdminController extends BaseController
 
     // ===== Helpers =====
 
-    private function toApi(LuongThang $r): array
-    {
-        return [
-            'id'              => $r->id,
-            'user_id'         => $r->user_id,
-            'user_name'       => $r->relationLoaded('user') && $r->user
-                                  ? ($r->user->name ?? $r->user->email)
-                                  : null,
-            'thang'           => $r->thang,
-            'luong_co_ban'    => $r->luong_co_ban,
-            'cong_chuan'      => $r->cong_chuan,
-            'he_so'           => (float) $r->he_so,
-            'so_ngay_cong'    => (float) $r->so_ngay_cong,
-            'so_gio_cong'     => $r->so_gio_cong,
-            'phu_cap'         => $r->phu_cap,
-            'thuong'          => $r->thuong,
-            'phat'            => $r->phat,
-            'luong_theo_cong' => $r->luong_theo_cong,
-            'bhxh'            => $r->bhxh,
-            'bhyt'            => $r->bhyt,
-            'bhtn'            => $r->bhtn,
-            'khau_tru_khac'   => $r->khau_tru_khac,
-            'tam_ung'         => $r->tam_ung,
-            'thuc_nhan'       => $r->thuc_nhan,
-            'locked'          => (bool) $r->locked,
-            'computed_at'     => $r->computed_at?->toDateTimeString(),
-            'ghi_chu'         => $r->ghi_chu,
-            'created_at'      => $r->created_at?->toDateTimeString(),
-            'updated_at'      => $r->updated_at?->toDateTimeString(),
-        ];
+private function toApi(LuongThang $r): array
+{
+    // decode note if possible
+    $note = null;
+    if (!empty($r->ghi_chu)) {
+        if (is_string($r->ghi_chu)) {
+            try { $note = json_decode($r->ghi_chu, true, 512, JSON_THROW_ON_ERROR); }
+            catch (\Throwable $e) { $note = null; }
+        } elseif (is_array($r->ghi_chu) || $r->ghi_chu instanceof \JsonSerializable) {
+            $note = (array) $r->ghi_chu;
+        }
     }
+    $mode       = $note['mode']        ?? null;
+    $base       = isset($note['base']) ? (int)$note['base'] : null;
+    $daily_rate = isset($note['daily_rate']) ? (int)$note['daily_rate'] : null;
+    $cong_eff   = isset($note['cong_chuan']) ? (int)$note['cong_chuan'] : (int)$r->cong_chuan;
+    $bh_base    = isset($note['bh_base']) ? (int)$note['bh_base'] : null;
+
+    $gross = (int)$r->luong_theo_cong + (int)$r->phu_cap + (int)$r->thuong - (int)$r->phat; // P
+    $qIns  = (int)$r->bhxh + (int)$r->bhyt + (int)$r->bhtn;                                   // Q
+    $rDed  = (int)$r->khau_tru_khac;                                                          // R
+    $tAdv  = (int)$r->tam_ung;                                                                // T
+    $net   = (int)$r->thuc_nhan;                                                              // U
+
+    return [
+        'id'              => (int)$r->id,
+        'user_id'         => (int)$r->user_id,
+        'user_name'       => $r->relationLoaded('user') && $r->user ? ($r->user->name ?? $r->user->email) : null,
+        'thang'           => (string)$r->thang,
+
+        'luong_co_ban'    => (int)$r->luong_co_ban,
+        'cong_chuan'      => $cong_eff,
+        'he_so'           => (float)$r->he_so,
+        'so_ngay_cong'    => (float)$r->so_ngay_cong,
+        'so_gio_cong'     => (int)$r->so_gio_cong,
+
+        'luong_theo_cong' => (int)$r->luong_theo_cong,
+        'phu_cap'         => (int)$r->phu_cap,
+        'thuong'          => (int)$r->thuong,
+        'phat'            => (int)$r->phat,
+
+        'bhxh'            => (int)$r->bhxh,
+        'bhyt'            => (int)$r->bhyt,
+        'bhtn'            => (int)$r->bhtn,
+        'khau_tru_khac'   => $rDed,
+        'tam_ung'         => $tAdv,
+
+        // P/Q/R/T/U
+        'P_gross'         => $gross,
+        'Q_insurance'     => $qIns,
+        'R_deduct_other'  => $rDed,
+        'T_advance'       => $tAdv,
+        'U_net'           => $net,
+
+        // metrics từ service (nếu có)
+        'metrics' => [
+            'mode'       => $mode,
+            'base'       => $base,
+            'daily_rate' => $daily_rate,
+            'bh_base'    => $bh_base,
+        ],
+
+        'locked'          => (bool)$r->locked,
+        'computed_at'     => $r->computed_at?->toDateTimeString(),
+        'created_at'      => $r->created_at?->toDateTimeString(),
+        'updated_at'      => $r->updated_at?->toDateTimeString(),
+        'ghi_chu'         => $r->ghi_chu,
+    ];
+}
+
 
     // --- Response helpers ---
     private function success($data = [], string $code = 'OK', int $status = 200)

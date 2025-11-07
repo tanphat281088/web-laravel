@@ -20,6 +20,10 @@ class PermissionV2
         'nhan-su/bang-luong/my' => 'payrollMe', // Bảng lương (của tôi)
         'nhan-su/bang-luong'    => 'payroll',   // Bảng lương (Quản lý) + list
 
+        // Nhân sự → Thiết lập lương (hồ sơ)
+        'nhan-su/luong-profile'     => 'payroll-profile',   // GET get()
+        'nhan-su/luong-profile/upsert' => 'payroll-profile',// POST upsert()
+        'nhan-su/luong/preview'     => 'payroll-profile',   // GET preview()
 
         // CSKH (parent/child)
         'cskh/points'          => 'cskh-points',
@@ -296,6 +300,39 @@ if (preg_match('#^cash/audit-delta/fix$#', $path) === 1 && $method === 'POST') {
         }
         // GET /nhan-su/bang-luong/list -> index (để CRUD mặc định xử lý GET no-id = index)
         // GET /nhan-su/bang-luong (adminShow với ?user_id=) sẽ rơi về index (không check query ở đây).
+
+// Đặc thù — Payroll Profile (Thiết lập lương)
+// GET /nhan-su/luong-profile -> index
+if (preg_match('#^nhan-su/luong-profile$#', $path) === 1 && $method === 'GET') {
+    return 'index';
+}
+// POST /nhan-su/luong-profile/upsert -> edit (không coi là create)
+if (preg_match('#^nhan-su/luong-profile/upsert$#', $path) === 1 && $method === 'POST') {
+    return 'edit';
+}
+// GET /nhan-su/luong/preview -> index
+if (preg_match('#^nhan-su/luong/preview$#', $path) === 1 && $method === 'GET') {
+    return 'index';
+}
+
+
+// Đặc thù — Nhân sự: Đơn từ (duyệt/từ chối/hủy)
+// PATCH /nhan-su/don-tu/{id}/approve -> edit
+if (preg_match('#^nhan-su/don-tu/\d+/approve$#', $path) === 1 && $method === 'PATCH') {
+    return 'edit';
+}
+// PATCH /nhan-su/don-tu/\d+/reject -> edit
+if (preg_match('#^nhan-su/don-tu/\d+/reject$#', $path) === 1 && $method === 'PATCH') {
+    return 'edit';
+}
+// PATCH /nhan-su/don-tu/\d+/cancel -> (tùy chọn) cho phép coi như edit; 
+// nếu muốn user tự hủy không cần quyền edit, bạn có thể return 'index' thay vì 'edit'
+if (preg_match('#^nhan-su/don-tu/\d+/cancel$#', $path) === 1 && $method === 'PATCH') {
+    return 'edit';
+}
+
+
+
 
 
         // 8) Chuẩn CRUD

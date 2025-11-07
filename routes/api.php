@@ -47,6 +47,8 @@ use App\Http\Controllers\Cash\CashAuditController;  // ⬅️ thêm dòng này
 
 use App\Modules\NhanSu\Payroll\BangLuongMeController;         // MỚI: Bảng lương (của tôi)
 use App\Modules\NhanSu\Payroll\BangLuongAdminController;      // MỚI: Bảng lương (Quản lý)
+use App\Modules\NhanSu\Payroll\LuongProfileController;        // MỚI: Thiết lập lương (hồ sơ)
+
 
 
 
@@ -649,6 +651,22 @@ Route::middleware(['jwt', env('PERMISSION_ENGINE', 'permission') === 'v2' ? Perm
             Route::patch('/unlock',      [BangCongAdminOpsController::class,'unlock'])->name('bang-cong.unlock');
             Route::post('/recompute-all',[BangCongAdminOpsController::class,'recomputeAll'])->name('bang-cong.recompute_all');
         });
+
+                // ===== Thiết lập lương (Payroll Profile) =====
+        // Xem hồ sơ lương hiện tại (FE load form)
+        Route::get('luong-profile', [LuongProfileController::class, 'get'])
+            ->middleware('perm:payroll-profile.index')
+            ->name('luong-profile.get');
+
+        // Lưu/Upsert hồ sơ lương (FE bấm Lưu)
+        Route::post('luong-profile/upsert', [LuongProfileController::class, 'upsert'])
+            ->middleware('perm:payroll-profile.edit')
+            ->name('luong-profile.upsert');
+
+        // Xem trước tính lương theo tháng (không ghi DB)
+        Route::get('luong/preview', [LuongProfileController::class, 'preview'])
+            ->middleware('perm:payroll-profile.index')
+            ->name('luong.preview');
 
         // ===== Bảng lương =====
         Route::prefix('bang-luong')->group(function () {

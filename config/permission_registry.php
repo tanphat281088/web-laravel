@@ -151,6 +151,17 @@ return [
 ]],
 
 
+// ===== NHÂN SỰ → THIẾT LẬP LƯƠNG (HỒ SƠ) =====
+['name' => 'payroll-profile', 'actions' => [
+    'showMenu' => false,   // bật true nếu muốn hiện 1 mục riêng trên Sidebar
+    'index'    => false,   // quyền xem hồ sơ + preview + mở trang UI
+    'show'     => false,
+    'create'   => false,   // không dùng create riêng
+    'edit'     => false,   // quyền upsert (lưu thay đổi)
+    'delete'   => false,
+    'export'   => false,
+]],
+
 
   // ===== NHÂN SỰ =====
 ['name' => 'nhan-su', 'actions' => [

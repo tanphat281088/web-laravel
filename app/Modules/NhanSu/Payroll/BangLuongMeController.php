@@ -68,42 +68,82 @@ class BangLuongMeController extends BaseController
 
     // ===== Helpers =====
 
-    private function toApi(LuongThang $r): array
-    {
-        return [
-            'id'              => $r->id,
-            'user_id'         => $r->user_id,
-            'user_name'       => $r->relationLoaded('user') && $r->user
-                                  ? ($r->user->name ?? $r->user->email)
-                                  : null,
-            'thang'           => $r->thang,
-
-            'luong_co_ban'    => $r->luong_co_ban,
-            'cong_chuan'      => $r->cong_chuan,
-            'he_so'           => (float) $r->he_so,
-
-            'so_ngay_cong'    => (float) $r->so_ngay_cong,
-            'so_gio_cong'     => $r->so_gio_cong,
-
-            'phu_cap'         => $r->phu_cap,
-            'thuong'          => $r->thuong,
-            'phat'            => $r->phat,
-
-            'luong_theo_cong' => $r->luong_theo_cong,
-            'bhxh'            => $r->bhxh,
-            'bhyt'            => $r->bhyt,
-            'bhtn'            => $r->bhtn,
-            'khau_tru_khac'   => $r->khau_tru_khac,
-            'tam_ung'         => $r->tam_ung,
-            'thuc_nhan'       => $r->thuc_nhan,
-
-            'locked'          => (bool) $r->locked,
-            'computed_at'     => $r->computed_at?->toDateTimeString(),
-            'ghi_chu'         => $r->ghi_chu,
-            'created_at'      => $r->created_at?->toDateTimeString(),
-            'updated_at'      => $r->updated_at?->toDateTimeString(),
-        ];
+private function toApi(LuongThang $r): array
+{
+    // Giải mã ghi_chu (có thể là JSON string)
+    $note = null;
+    if (!empty($r->ghi_chu)) {
+        if (is_string($r->ghi_chu)) {
+            try { $note = json_decode($r->ghi_chu, true, 512, JSON_THROW_ON_ERROR); }
+            catch (\Throwable $e) { $note = null; }
+        } elseif (is_array($r->ghi_chu) || $r->ghi_chu instanceof \JsonSerializable) {
+            $note = (array) $r->ghi_chu;
+        }
     }
+
+    $mode       = $note['mode']        ?? null;
+    $base       = isset($note['base']) ? (int)$note['base'] : null;
+    $daily_rate = isset($note['daily_rate']) ? (int)$note['daily_rate'] : null;
+    $cong_eff   = isset($note['cong_chuan']) ? (int)$note['cong_chuan'] : (int)$r->cong_chuan;
+    $bh_base    = isset($note['bh_base']) ? (int)$note['bh_base'] : null;
+
+    // P/Q/R/T/U: U = P − Q − R − T (khớp Excel)
+    $P_gross = (int)$r->luong_theo_cong + (int)$r->phu_cap + (int)$r->thuong - (int)$r->phat; // P
+    $Q_ins   = (int)$r->bhxh + (int)$r->bhyt + (int)$r->bhtn;                                   // Q
+    $R_ded   = (int)$r->khau_tru_khac;                                                          // R
+    $T_adv   = (int)$r->tam_ung;                                                                // T
+    $U_net   = (int)$r->thuc_nhan;                                                              // U (đã tính)
+
+    return [
+        'id'              => (int)$r->id,
+        'user_id'         => (int)$r->user_id,
+        'user_name'       => $r->relationLoaded('user') && $r->user
+                              ? ($r->user->name ?? $r->user->email)
+                              : null,
+        'thang'           => (string)$r->thang,
+
+        'luong_co_ban'    => (int)$r->luong_co_ban,
+        'cong_chuan'      => $cong_eff,
+        'he_so'           => (float)$r->he_so,
+
+        'so_ngay_cong'    => (float)$r->so_ngay_cong,
+        'so_gio_cong'     => (int)$r->so_gio_cong,
+
+        'phu_cap'         => (int)$r->phu_cap,
+        'thuong'          => (int)$r->thuong,
+        'phat'            => (int)$r->phat,
+
+        'luong_theo_cong' => (int)$r->luong_theo_cong,
+        'bhxh'            => (int)$r->bhxh,
+        'bhyt'            => (int)$r->bhyt,
+        'bhtn'            => (int)$r->bhtn,
+        'khau_tru_khac'   => $R_ded,
+        'tam_ung'         => $T_adv,
+
+        // ===== P/Q/R/T/U =====
+        'P_gross'         => $P_gross,
+        'Q_insurance'     => $Q_ins,
+        'R_deduct_other'  => $R_ded,
+        'T_advance'       => $T_adv,
+        'U_net'           => $U_net,
+
+        // metrics phụ để FE hiển thị chi tiết
+        'metrics' => [
+            'mode'       => $mode,
+            'base'       => $base,
+            'daily_rate' => $daily_rate,
+            'bh_base'    => $bh_base,
+        ],
+
+        'locked'          => (bool)$r->locked,
+        'computed_at'     => $r->computed_at?->toDateTimeString(),
+        'created_at'      => $r->created_at?->toDateTimeString(),
+        'updated_at'      => $r->updated_at?->toDateTimeString(),
+        // giữ nguyên ghi_chu (raw) để debug nếu cần
+        'ghi_chu'         => $r->ghi_chu,
+    ];
+}
+
 
     // --- Response helpers ---
     private function success($data = [], string $code = 'OK', int $status = 200)

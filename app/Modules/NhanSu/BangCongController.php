@@ -5,6 +5,8 @@ namespace App\Modules\NhanSu;
 use App\Http\Controllers\Controller as BaseController;
 use App\Models\BangCongThang;
 use App\Services\Timesheet\BangCongService;
+use App\Services\Payroll\BangLuongService; // NEW: để gọi recompute Payroll sau khi tính công
+
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
@@ -52,6 +54,19 @@ class BangCongController extends BaseController
                 ]);
             }
         }
+
+// NEW: nếu client yêu cầu thì sau khi tính bảng công, chạy luôn Payroll cho user/tháng này
+if ($request->boolean('also_payroll', false)) {
+    try {
+        /** @var BangLuongService $payroll */
+        $payroll = app(BangLuongService::class);
+        $payroll->computeMonth($thang, (int) $uid);
+        \Log::info('Payroll recompute triggered from myIndex', ['uid' => $uid, 'thang' => $thang]);
+    } catch (\Throwable $e) {
+        \Log::warning('Payroll recompute (myIndex) failed', ['uid' => $uid, 'thang' => $thang, 'err' => $e->getMessage()]);
+    }
+}
+
 
         $payload = [
             'thang' => $thang,
@@ -105,6 +120,19 @@ class BangCongController extends BaseController
             }
         }
 
+// NEW: nếu yêu cầu, sau khi tính bảng công cho user này thì chạy luôn Payroll cùng kỳ
+if ($request->boolean('also_payroll', false)) {
+    try {
+        /** @var BangLuongService $payroll */
+        $payroll = app(BangLuongService::class);
+        $payroll->computeMonth($thang, (int) $userId);
+        \Log::info('Payroll recompute triggered from adminIndex', ['uid' => $userId, 'thang' => $thang]);
+    } catch (\Throwable $e) {
+        \Log::warning('Payroll recompute (adminIndex) failed', ['uid' => $userId, 'thang' => $thang, 'err' => $e->getMessage()]);
+    }
+}
+
+
         $payload = [
             'user_id' => $userId,
             'thang'   => $thang,
@@ -125,26 +153,45 @@ class BangCongController extends BaseController
      */
     public function recompute(Request $request, BangCongService $svc)
     {
-        $v = Validator::make($request->all(), [
-            'thang'   => ['nullable', 'regex:/^\d{4}\-\d{2}$/'],
-            'user_id' => ['nullable', 'integer', 'min:1'],
-        ]);
+$v = Validator::make($request->all(), [
+    'thang'         => ['nullable', 'regex:/^\d{4}\-\d{2}$/'],
+    'user_id'       => ['nullable', 'integer', 'min:1'],
+    'also_payroll'  => ['nullable', 'boolean'], // NEW: cho phép chạy luôn Payroll
+]);
+
         if ($v->fails()) {
             return $this->failed($v->errors(), 'VALIDATION_ERROR', 422);
         }
 
         $thang  = $request->input('thang') ?: now()->format('Y-m');
         $userId = $request->input('user_id') ? (int) $request->input('user_id') : null;
+        $alsoPayroll = (bool) $request->boolean('also_payroll', false); // NEW
+
 
         try {
             // Chạy tổng hợp theo kỳ 6→5
-            $svc->computeMonth($thang, $userId);
+// Chạy tổng hợp theo kỳ 6→5
+$svc->computeMonth($thang, $userId);
 
-            return $this->success([
-                'thang'   => $thang,
-                'user_id' => $userId,
-                'notice'  => 'Đã tổng hợp bảng công.',
-            ], 'RECOMPUTED_OK');
+// NEW: nếu được yêu cầu thì gọi luôn Payroll (bảng lương) cho cùng kỳ
+if ($alsoPayroll) {
+    try {
+        /** @var BangLuongService $payroll */
+        $payroll = app(BangLuongService::class);
+        $payroll->computeMonth($thang, $userId);
+        \Log::info('Payroll recompute triggered from Timesheet.recompute', ['uid' => $userId, 'thang' => $thang]);
+    } catch (\Throwable $e) {
+        \Log::warning('Payroll recompute (Timesheet.recompute) failed', ['uid' => $userId, 'thang' => $thang, 'err' => $e->getMessage()]);
+    }
+}
+
+return $this->success([
+    'thang'         => $thang,
+    'user_id'       => $userId,
+    'also_payroll'  => $alsoPayroll ? true : false, // NEW: để FE biết đã gọi Payroll chưa
+    'notice'        => 'Đã tổng hợp bảng công.',
+], 'RECOMPUTED_OK');
+
         } catch (\Throwable $e) {
             // Ghi log chi tiết để tra lỗi nhanh
             \Log::error('Timesheet recompute failed', [

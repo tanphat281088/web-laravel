@@ -20,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
     $middleware->alias([
       'jwt' => JWT::class,
       'permission' => Permission::class,
+       'perm'       => \App\Http\Middleware\PermissionV2::class,
     ]);
     $middleware->web([\Illuminate\Http\Middleware\HandleCors::class]);
     $middleware->api([\Illuminate\Http\Middleware\HandleCors::class]);

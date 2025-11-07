@@ -94,26 +94,42 @@ class BangCongAdminOpsController extends BaseController
      */
     public function recomputeAll(Request $request, BangCongService $svc)
     {
-        $v = Validator::make($request->all(), [
-            'thang' => ['required', 'regex:/^\d{4}\-\d{2}$/'],
-        ]);
+ $v = Validator::make($request->all(), [
+    'thang'         => ['required', 'regex:/^\d{4}\-\d{2}$/'],
+    'also_payroll'  => ['nullable', 'boolean'],   // ✅ NEW: cho phép gọi Payroll sau khi tính công
+]);
+
         if ($v->fails()) return $this->failed($v->errors(), 'VALIDATION_ERROR', 422);
 
         $thang = (string) $request->input('thang');
+        $alsoPayroll = (bool) $request->boolean('also_payroll', false);  // ✅ NEW
+
 
         try {
             // Giao cho service xử lý chi tiết (tính & upsert). Khuyến nghị logic service:
             // - Chỉ upsert các user chưa có dòng hoặc dòng chưa locked
             // - Tôn trọng locked=true (bỏ qua)
-            $svc->computeMonth($thang, null);
+      // Giao cho service xử lý chi tiết (tính & upsert). Khuyến nghị logic service:
+// - Chỉ upsert các user chưa có dòng hoặc dòng chưa locked
+// - Tôn trọng locked=true (bỏ qua)
+$svc->computeMonth($thang, null);
 
-            $stats = $this->statsOfMonth($thang);
+// ✅ NEW: Nếu được yêu cầu, chạy luôn Payroll cho tháng này (bỏ qua locked theo logic Payroll)
+if ($alsoPayroll) {
+    /** @var \App\Services\Payroll\BangLuongService $payroll */
+    $payroll = app(\App\Services\Payroll\BangLuongService::class);
+    $payroll->computeMonth($thang, null);
+}
 
-            return $this->success([
-                'thang'   => $thang,
-                'notice'  => 'Đã tổng hợp lại cho toàn bộ nhân viên (bỏ qua các dòng đã khoá).',
-                'stats'   => $stats,
-            ], 'RECOMPUTED_ALL_OK');
+$stats = $this->statsOfMonth($thang);
+
+return $this->success([
+    'thang'         => $thang,
+    'notice'        => 'Đã tổng hợp lại cho toàn bộ nhân viên (bỏ qua các dòng đã khoá).',
+    'also_payroll'  => $alsoPayroll ? true : false,                 // ✅ NEW
+    'stats'         => $stats,
+], 'RECOMPUTED_ALL_OK');
+
         } catch (Throwable $e) {
             return $this->failed(config('app.debug') ? $e->getMessage() : 'Lỗi hệ thống.', 'SERVER_ERROR', 500);
         }
