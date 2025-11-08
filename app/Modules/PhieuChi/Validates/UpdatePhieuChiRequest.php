@@ -25,7 +25,8 @@ class UpdatePhieuChiRequest extends FormRequest
       // Thêm các quy tắc validation cho cập nhật PhieuChi ở đây
       'ma_phieu_chi' => 'required|string|max:255|unique:phieu_chis,ma_phieu_chi,' . $this->id,
       'ngay_chi' => 'required|date',
-      'loai_phieu_chi' => 'required|integer|in:1,2,3',
+   'loai_phieu_chi' => 'required|integer|in:1,2,3,4',
+
       'nha_cung_cap_id' => 'nullable|integer',
       'phieu_nhap_kho_id' => 'nullable|integer',
       'so_tien' => 'required|integer',
@@ -36,6 +37,9 @@ class UpdatePhieuChiRequest extends FormRequest
       'ngan_hang' => 'nullable|string',
       'ly_do_chi' => 'nullable|string',
       'ghi_chu' => 'nullable|string',
+      // Danh mục hạch toán Mức A (cho phép sửa khi Loại phiếu = Chi khác)
+'category_id' => 'nullable|integer|exists:expense_categories,id|required_if:loai_phieu_chi,3',
+
     ];
   }
 
@@ -67,6 +71,10 @@ class UpdatePhieuChiRequest extends FormRequest
       'ngan_hang.string' => 'Ngân hàng phải là chuỗi',
       'ly_do_chi.string' => 'Lý do chi phải là chuỗi',
       'ghi_chu.string' => 'Ghi chú phải là chuỗi',
+      'category_id.integer'     => 'Danh mục chi không hợp lệ',
+'category_id.exists'      => 'Danh mục chi không tồn tại',
+'category_id.required_if' => 'Vui lòng chọn Danh mục chi khi Loại phiếu = Chi khác',
+
     ];
   }
 }

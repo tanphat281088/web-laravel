@@ -77,10 +77,13 @@ class BangLuongService
     public function computeOne(string $thang, int $userId): void
     {
         // 1) Lấy snapshot công (BangCongThang) của tháng
-        $bc = BangCongThang::query()
-            ->ofUser($userId)
-            ->month($thang)
-            ->first();
+$bc = BangCongThang::query()
+    ->ofUser($userId)
+    ->month($thang)
+    ->orderByDesc('computed_at')
+    ->orderByDesc('updated_at')
+    ->first();
+
 
         // 2) Lấy profile lương (hoặc default)
         $profile = LuongProfile::query()->ofUser($userId)->first();
@@ -146,7 +149,7 @@ if (!$cfg['apply_insurance'] || $cfg['insurance_base_mode'] === 'none') {
 
         // 5) Upsert an toàn (bỏ qua dòng locked)
         DB::transaction(function () use (
-            $thang, $userId, $cfg, $soNgayCong, $soGioCong, $luongTheoCong, $bhxh, $bhyt, $bhtn
+            $thang, $userId, $cfg, $soNgayCong, $soGioCong, $luongTheoCong, $bhxh, $bhyt, $bhtn,$congChuanEff, $dailyRate, $prorate, $bhBase
         ) {
             /** @var LuongThang|null $row */
             $row = LuongThang::query()

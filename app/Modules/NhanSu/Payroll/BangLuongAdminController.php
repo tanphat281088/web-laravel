@@ -111,6 +111,7 @@ class BangLuongAdminController extends BaseController
         $paginator = $q->paginate($perPage, ['*'], 'page', $page);
 
         // HOTFIX: map an toàn để không nổ 500
+        $raw = $paginator->items();
 $items = array_map(function ($r) {
     $name = null;
     if (isset($r->user) && $r->user) {

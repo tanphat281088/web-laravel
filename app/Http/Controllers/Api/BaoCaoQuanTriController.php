@@ -140,7 +140,8 @@ $dtSeries01 = DB::table('don_hangs')
                 ->leftJoin($ec.' as p','p.id','=','c.parent_id')
                 ->when($from, fn($q)=>$q->whereDate($pc.'.ngay_chi','>=',$from))
                 ->when($to,   fn($q)=>$q->whereDate($pc.'.ngay_chi','<=',$to))
-                ->selectRaw("DATE_FORMAT($pc.created_at,'%Y-%m') as ym, COALESCE(p.statement_line,0) as line, SUM($pc.so_tien) as total")
+              ->selectRaw("DATE_FORMAT($pc.ngay_chi,'%Y-%m') as ym, COALESCE(p.statement_line,0) as line, SUM($pc.so_tien) as total")
+
                 ->groupBy('ym','line')->get()->groupBy('ym');
 
             foreach ($chiSeries as $ym => $rows) {

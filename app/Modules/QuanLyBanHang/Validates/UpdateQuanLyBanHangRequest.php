@@ -44,7 +44,8 @@ class UpdateQuanLyBanHangRequest extends FormRequest
       // ===== Thông tin người nhận =====
       'nguoi_nhan_ten'        => ['sometimes','nullable','string','max:191'],
       'nguoi_nhan_sdt'        => ['sometimes','nullable','string','max:20','regex:/^(0|\+84)\d{8,12}$/'],
-      'nguoi_nhan_thoi_gian'  => ['sometimes','nullable','date'],
+'nguoi_nhan_thoi_gian'  => ['sometimes','required','date'],
+
 
       // ===== Khách hàng =====
       // 0 = KH hệ thống, 1 = KH tự do
