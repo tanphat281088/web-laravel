@@ -100,6 +100,19 @@ return [
   // ledger đi chung quyền với stocks (index/export)
   ['name' => 'vt-stocks',          'actions' => ['showMenu'=>false,'index'=>false,'show'=>false,'create'=>false,'edit'=>false,'delete'=>false,'export'=>false]],
 
+// ===== CASHFLOW — umbrella (quyền tổng) =====
+['name' => 'cashflow', 'actions' => [
+    'showMenu' => false,  // hiện/ẩn mục trên Sidebar
+    'index'    => false,  // cho phép xem các trang/endpoint đọc (balances/ledger/accounts/aliases)
+    'show'     => false,
+    'create'   => false,
+    'edit'     => false,  // nếu muốn post/unpost chuyển nội bộ, bật thêm edit cho role
+    'delete'   => false,
+    'export'   => false,
+]],
+
+
+
   // ===== CASHFLOW — hạt mịn =====
   ['name' => 'cash-accounts',            'actions' => ['showMenu'=>false,'index'=>false,'show'=>false,'create'=>false,'edit'=>false,'delete'=>false,'export'=>false]],
   ['name' => 'cash-aliases',             'actions' => ['showMenu'=>false,'index'=>false,'show'=>false,'create'=>false,'edit'=>false,'delete'=>false,'export'=>false]],

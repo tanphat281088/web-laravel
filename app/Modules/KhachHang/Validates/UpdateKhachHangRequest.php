@@ -25,7 +25,8 @@ class UpdateKhachHangRequest extends FormRequest
             'email'          => 'sometimes|nullable|email|max:255|unique:khach_hangs,email,' . $this->id,
 
             'so_dien_thoai'  => 'sometimes|required|string|max:255|unique:khach_hangs,so_dien_thoai,' . $this->id,
-            'dia_chi'        => 'sometimes|required|string|max:255',
+        'dia_chi'        => 'sometimes|nullable|string|max:255',
+
             'ghi_chu'        => 'nullable|string|max:255',
 
             // Kênh liên hệ: BẮT BUỘC (yêu cầu form gửi trường này) + phải nằm trong danh sách
@@ -53,7 +54,7 @@ class UpdateKhachHangRequest extends FormRequest
             'so_dien_thoai.max'       => 'Số điện thoại không được vượt quá 255 ký tự',
             'so_dien_thoai.unique'    => 'Số điện thoại đã tồn tại',
 
-            'dia_chi.required'        => 'Địa chỉ là bắt buộc',
+
 
             'kenh_lien_he.required'   => 'Vui lòng chọn Kênh liên hệ',
             'kenh_lien_he.max'        => 'Kênh liên hệ không được vượt quá 191 ký tự',

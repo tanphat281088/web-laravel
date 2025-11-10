@@ -117,6 +117,19 @@ class PermissionV2
         'expense-categories',         // bao phủ .../parents, .../options, .../tree
     ];
 
+    // === umbrella helper: kiểm quyền 1 module + action ===
+    protected function hasPerm(array $permissions, string $name, string $action): bool
+    {
+        foreach ($permissions as $p) {
+            if (!isset($p['name']) || $p['name'] !== $name) continue;
+            $acts = $p['actions'] ?? [];
+            if (!empty($acts[$action])) return true;
+            if ($action === 'show' && !empty($acts['index'])) return true; // show được coi như index
+        }
+        return false;
+    }
+
+
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -169,6 +182,19 @@ foreach ($permissions as $p) {
     if ($action === 'show' && !empty($acts['index'])) { $granted = true; break; }
 }
 
+// === Fallback umbrella cho nhóm CASHFLOW ===
+// Nếu module là 1 trong các 'cash-*' mà chưa được cấp thẳng,
+// thì cho phép nếu có 'cashflow.index' (đọc) hoặc 'cashflow.edit' (ghi).
+if (!$granted && str_starts_with($module, 'cash-')) {
+    $isRead  = in_array($action, ['index','show','export'], true);
+    $isWrite = in_array($action, ['create','edit','delete','post','unpost','update'], true);
+
+    if ($isRead && $this->hasPerm($permissions, 'cashflow', 'index')) {
+        $granted = true;
+    } elseif ($isWrite && $this->hasPerm($permissions, 'cashflow', 'edit')) {
+        $granted = true;
+    }
+}
 
 
         if (!$granted) {

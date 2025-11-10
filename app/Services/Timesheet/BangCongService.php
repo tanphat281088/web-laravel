@@ -23,91 +23,105 @@ class BangCongService
      * Tổng hợp bảng công cho 1 kỳ/tháng (YYYY-MM).
      * Quy ước: 'thang' là THÁNG BẮT ĐẦU kỳ 6→5 (VD: 2025-10 = 2025-10-06 → 2025-11-05).
      */
-    public function computeMonth(string $thang, ?int $userId = null): void
-    {
-        // Dùng range kỳ 6→5 theo cấu hình
-        [$start, $end] = $this->cycleRange($thang);
+public function computeMonth(string $thang, ?int $userId = null): void
+{
+    // Dùng range kỳ 6→5 theo cấu hình
+    [$start, $end] = $this->cycleRange($thang);
 
-        \Log::info('Timesheet::computeMonth START', [
-            'thang'    => $thang,
-            'range'    => [$start->toDateTimeString(), $end->toDateTimeString()],
-            'user_id'  => $userId,
-        ]);
+    \Log::info('Timesheet::computeMonth START', [
+        'thang'    => $thang,
+        'range'    => [$start->toDateTimeString(), $end->toDateTimeString()],
+        'user_id'  => $userId,
+    ]);
 
-        $userIds = $this->collectUserIds($start, $end, $userId);
+    $userIds = $this->collectUserIds($start, $end, $userId);
 
-        DB::transaction(function () use ($userIds, $thang, $start, $end) {
-            foreach ($userIds as $uid) {
-                $existing = BangCongThang::query()->ofUser($uid)->month($thang)->first();
-                if ($existing && $existing->locked) {
-                    \Log::info('Timesheet::computeMonth SKIP locked row', ['uid' => $uid, 'thang' => $thang]);
-                    continue;
-                }
+    // ✅ Mỗi user một transaction ngắn (tránh giữ lock dài cho cả tháng)
+    foreach ($userIds as $uid) {
+        DB::transaction(function () use ($uid, $thang, $start, $end) {
+            $existing = BangCongThang::query()->ofUser($uid)->month($thang)->first();
+            if ($existing && $existing->locked) {
+                \Log::info('Timesheet::computeMonth SKIP locked row', ['uid' => $uid, 'thang' => $thang]);
+                return;
+            }
 
-                // 1) Ngày công (đủ in+out), có thể loại trừ weekend/holiday tùy config
-                $workedDays = $this->countWorkedDaysAdvanced($uid, $start, $end);
+            // 1) Ngày công (đủ in+out), có thể loại trừ weekend/holiday tùy config
+            $workedDays = $this->countWorkedDaysAdvanced($uid, $start, $end);
 
-                // 2) Nghỉ phép / không lương (lọc overlap theo tu_ngay/den_ngay)
-                [$npNgay, $npGio, $klNgay, $klGio] = $this->sumLeaves($uid, $start, $end);
+            // 2) Nghỉ phép / không lương (lọc overlap theo tu_ngay/den_ngay)
+            [$npNgay, $npGio, $klNgay, $klGio] = $this->sumLeaves($uid, $start, $end);
 
-                // 3) Tổng giờ công, đi trễ, về sớm, OT
-                [$soGioCong, $diTre, $veSom, $otGio] = $this->sumWorkHoursAndLateEarlyOT($uid, $start, $end);
+            // 3) Tổng giờ công, đi trễ, về sớm, OT
+            [$soGioCong, $diTre, $veSom, $otGio] = $this->sumWorkHoursAndLateEarlyOT($uid, $start, $end);
 
-                $note = [
-                    'computed_by' => 'BangCongService::computeMonth',
-                    'range'       => [$start->toDateString(), $end->toDateString()],
-                    'rule'        => [
-                        'enabled'       => $this->rule->enabled(),
-                        'start'         => $this->rule->start(),
-                        'end'           => $this->rule->end(),
-                        'break_start'   => $this->rule->breakStart(),
-                        'break_end'     => $this->rule->breakEnd(),
-                        'grace_minutes' => $this->rule->grace(),
-                        'ot' => [
-                            'enabled'         => (bool) config('timesheet.ot.enabled', false),
-                            'after_end_only'  => (bool) config('timesheet.ot.after_end_only', true),
-                            'min_minutes'     => (int)  config('timesheet.ot.min_minutes', 10),
+            $note = [
+                'computed_by' => 'BangCongService::computeMonth',
+                'range'       => [$start->toDateString(), $end->toDateString()],
+                'rule'        => [
+                    'enabled'       => $this->rule->enabled(),
+                    'start'         => $this->rule->start(),
+                    'end'           => $this->rule->end(),
+                    'break_start'   => $this->rule->breakStart(),
+                    'break_end'     => $this->rule->breakEnd(),
+                    'grace_minutes' => $this->rule->grace(),
+                    'ot' => [
+                        'enabled'         => (bool) config('timesheet.ot.enabled', false),
+                        'after_end_only'  => (bool) config('timesheet.ot.after_end_only', true),
+                        'min_minutes'     => (int)  config('timesheet.ot.min_minutes', 10),
+                    ],
+                    'calendar' => [
+                        'weekend' => [
+                            'enabled'  => $this->calendar->weekendEnabled(),
+                            'days'     => $this->calendar->weekendDays(),
+                            'exclude'  => $this->calendar->weekendExcludeFromWorkedDays(),
                         ],
-                        'calendar' => [
-                            'weekend' => [
-                                'enabled'  => $this->calendar->weekendEnabled(),
-                                'days'     => $this->calendar->weekendDays(),
-                                'exclude'  => $this->calendar->weekendExcludeFromWorkedDays(),
-                            ],
-                            'holiday' => [
-                                'enabled'  => $this->calendar->holidayEnabled(),
-                                'list_cnt' => count($this->calendar->holidays()),
-                                'exclude'  => $this->calendar->holidayExcludeFromWorkedDays(),
-                            ],
+                        'holiday' => [
+                            'enabled'  => $this->calendar->holidayEnabled(),
+                            'list_cnt' => count($this->calendar->holidays()),
+                            'exclude'  => $this->calendar->holidayExcludeFromWorkedDays(),
                         ],
                     ],
-                ];
+                ],
+            ];
 
-                BangCongThang::query()->updateOrCreate(
-                    ['user_id' => $uid, 'thang' => $thang],
-                    [
-                        'so_ngay_cong'          => $workedDays,
-                        'so_gio_cong'           => $soGioCong,
-                        'di_tre_phut'           => $diTre,
-                        've_som_phut'           => $veSom,
-                        'nghi_phep_ngay'        => $npNgay,
-                        'nghi_phep_gio'         => $npGio,
-                        'nghi_khong_luong_ngay' => $klNgay,
-                        'nghi_khong_luong_gio'  => $klGio,
-                        'lam_them_gio'          => $otGio,
-                        'ghi_chu'               => $note,
-                        'computed_at'           => now(),
-                    ]
-                );
 
-                \Log::info('Timesheet::computeMonth DONE row', [
-                    'uid' => $uid, 'thang' => $thang,
-                    'workedDays' => $workedDays, 'soGioCong' => $soGioCong,
-                    'late' => $diTre, 'early' => $veSom, 'ot' => $otGio
-                ]);
-            }
+            // ÉP KIỂU AN TOÀN TRƯỚC KHI GHI DB
+$workedDays = (int) $workedDays;
+$soGioCong  = max(0, (int) round($soGioCong));
+$diTre      = max(0, (int) round($diTre));
+$veSom      = max(0, (int) round($veSom));
+$npNgay     = max(0, (int) round($npNgay));
+$npGio      = max(0, (int) round($npGio));
+$klNgay     = max(0, (int) round($klNgay));
+$klGio      = max(0, (int) round($klGio));
+$otGio      = max(0, (int) round($otGio));
+
+            BangCongThang::query()->updateOrCreate(
+                ['user_id' => $uid, 'thang' => $thang],
+                [
+                    'so_ngay_cong'          => $workedDays,
+                    'so_gio_cong'           => $soGioCong,
+                    'di_tre_phut'           => $diTre,
+                    've_som_phut'           => $veSom,
+                    'nghi_phep_ngay'        => $npNgay,
+                    'nghi_phep_gio'         => $npGio,
+                    'nghi_khong_luong_ngay' => $klNgay,
+                    'nghi_khong_luong_gio'  => $klGio,
+                    'lam_them_gio'          => $otGio,
+                    'ghi_chu'               => $note,   // cột JSON → giữ mảng
+                    'computed_at'           => now(),
+                ]
+            );
+
+            \Log::info('Timesheet::computeMonth DONE row', [
+                'uid' => $uid, 'thang' => $thang,
+                'workedDays' => $workedDays, 'soGioCong' => $soGioCong,
+                'late' => $diTre, 'early' => $veSom, 'ot' => $otGio
+            ]);
         });
     }
+}
+
 
     /**
      * Range tháng dương lịch (GIỮ LẠI để tương thích nếu nơi khác vẫn dùng).
@@ -251,37 +265,107 @@ class BangCongService
 
             $firstIn = collect($pairs['ins'])->sort()->first();
             $lastOut = collect($pairs['outs'])->sort()->last();
+            $tz = config('app.timezone', 'Asia/Ho_Chi_Minh');
+$firstIn = $firstIn->copy()->setTimezone($tz);
+$lastOut = $lastOut->copy()->setTimezone($tz);
+
 
             [$b1, $b2] = $this->rule->breakPeriod($day);
             $worked = $this->minutesExcludingBreak($firstIn, $lastOut, $b1, $b2);
             if ($worked < 0) $worked = 0;
 
-            $totalMinutes += $worked;
+         $totalMinutes += (int) $worked;
 
-            $expectedIn  = $this->rule->dayStart($day)->copy()->addMinutes($this->rule->grace());
-            $expectedOut = $this->rule->dayEnd($day)->copy()->subMinutes($this->rule->grace());
 
-            if ($firstIn->gt($expectedIn))   $late  += $firstIn->diffInMinutes($expectedIn);
-            if ($lastOut->lt($expectedOut))  $early += $expectedOut->diffInMinutes($lastOut);
+$expectedIn  = $this->rule->dayStart($day)->copy()->addMinutes($this->rule->grace());
+$expectedOut = $this->rule->dayEnd($day)->copy()->subMinutes($this->rule->grace());
 
-            if ($otEnabled) {
-                $dailyOT = 0;
+// Tính trễ/sớm an toàn theo timestamp, ép >= 0 và ép int
+$lateDelta  = intdiv(max(0, $firstIn->getTimestamp() - $expectedIn->getTimestamp()), 60);
+$earlyDelta = intdiv(max(0, $expectedOut->getTimestamp() - $lastOut->getTimestamp()), 60);
+$late  += $lateDelta;
+$early += $earlyDelta;
 
-                if ($otAfterEndOnly) {
-                    if ($lastOut->gt($expectedOut)) {
-                        $dailyOT = $lastOut->diffInMinutes($expectedOut);
-                    }
-                } else {
-                    if ($lastOut->gt($expectedOut)) $dailyOT += $lastOut->diffInMinutes($expectedOut);
-                    if ($firstIn->lt($expectedIn))  $dailyOT += $expectedIn->diffInMinutes($firstIn);
-                }
 
-                if ($dailyOT >= $otMin) $otMinutes += $dailyOT;
-            }
+if ($otEnabled) {
+    $dailyOT = 0;
+
+    if ($otAfterEndOnly) {
+        // chỉ tính sau giờ kết thúc kỳ vọng
+        if ($lastOut->gt($expectedOut)) {
+            $dailyOT = intdiv(max(0, $lastOut->getTimestamp() - $expectedOut->getTimestamp()), 60);
         }
+    } else {
+        $aft = intdiv(max(0, $lastOut->getTimestamp() - $expectedOut->getTimestamp()), 60);
+        $bef = intdiv(max(0, $expectedIn->getTimestamp() - $firstIn->getTimestamp()), 60);
+        $dailyOT = $aft + $bef;
+    }
 
-        $soGioCong = intdiv($totalMinutes, 60);
-        $otGio     = intdiv($otMinutes, 60);
+    if ($dailyOT >= $otMin) $otMinutes += $dailyOT;
+}
+
+        }
+$soGioCong = $totalMinutes;   // lưu PHÚT thay vì GIỜ
+$otGio     = $otMinutes;      // lưu PHÚT thay vì GIỜ
+
+
+// DEBUG >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+\Log::debug('TS:hours', [
+    'user_id'     => $userId,
+    'range'       => [$start->toDateTimeString(), $end->toDateTimeString()],
+    'enabled'     => $this->rule->enabled(),
+    'tot_min'     => $totalMinutes,
+    'so_gio_cong' => $soGioCong,
+    'late_min'    => $late,
+    'early_min'   => $early,
+    'ot_min'      => $otMinutes,
+]);
+foreach ($byDay as $date => $pairs) {
+    $firstIn = empty($pairs['ins'])  ? null : collect($pairs['ins'])->sort()->first();
+    $lastOut = empty($pairs['outs']) ? null : collect($pairs['outs'])->sort()->last();
+    if ($firstIn && $lastOut) {
+        [$b1, $b2] = $this->rule->breakPeriod(\Carbon\Carbon::parse($date)->startOfDay());
+$tz = config('app.timezone', 'Asia/Ho_Chi_Minh');
+$fi = $firstIn->copy()->setTimezone($tz);
+$lo = $lastOut->copy()->setTimezone($tz);
+$b1z= $b1->copy()->setTimezone($tz);
+$b2z= $b2->copy()->setTimezone($tz);
+
+$all = max(0, intdiv($lo->getTimestamp() - $fi->getTimestamp(), 60));
+if ($lo->lte($b1z) || $fi->gte($b2z)) {
+    $worked = $all;
+} else {
+    $overlapStart = $fi->max($b1z);
+    $overlapEnd   = $lo->min($b2z);
+    $overlap = 0;
+    if ($overlapEnd->greaterThan($overlapStart)) {
+        $overlap = intdiv($overlapEnd->getTimestamp() - $overlapStart->getTimestamp(), 60);
+    }
+    $worked = max(0, $all - $overlap);
+}
+\Log::debug('TS:day', [
+    'user_id'     => $userId,
+    'date'        => $date,
+    'first_in'    => $fi->toIso8601String(),
+    'last_out'    => $lo->toIso8601String(),
+    'all_min'     => $all,
+    'break'       => [$b1z->toIso8601String(), $b2z->toIso8601String()],
+    'worked_min'  => $worked,
+]);
+
+    } else {
+        \Log::debug('TS:day-miss', [
+            'user_id' => $userId,
+            'date'    => $date,
+            'ins'     => count($pairs['ins'] ?? []),
+            'outs'    => count($pairs['outs'] ?? []),
+        ]);
+    }
+}
+// DEBUG <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+
+
 
         return [$soGioCong, $late, $early, $otGio];
     }
@@ -289,20 +373,40 @@ class BangCongService
     /**
      * Trả tổng phút giữa [$start,$end] sau khi TRỪ phần giao với khoảng nghỉ [$b1,$b2].
      */
-    private function minutesExcludingBreak(Carbon $startAt, Carbon $endAt, Carbon $b1, Carbon $b2): int
-    {
-        $all = max(0, $endAt->diffInMinutes($startAt));
+private function minutesExcludingBreak(Carbon $startAt, Carbon $endAt, Carbon $b1, Carbon $b2): int
+{
+    // Chuẩn hoá TZ để tránh diff âm/0 do lệch timezone
+    $tz = config('app.timezone', 'Asia/Ho_Chi_Minh');
+    $startAt = $startAt->copy()->setTimezone($tz);
+    $endAt   = $endAt->copy()->setTimezone($tz);
+    $b1      = $b1->copy()->setTimezone($tz);
+    $b2      = $b2->copy()->setTimezone($tz);
 
-        if ($endAt->lte($b1) || $startAt->gte($b2)) {
-            return $all;
-        }
-
-        $overlapStart = $startAt->max($b1);
-        $overlapEnd   = $endAt->min($b2);
-        $overlap = max(0, $overlapEnd->diffInMinutes($overlapStart));
-
-        return max(0, $all - $overlap);
+    if ($endAt->lessThanOrEqualTo($startAt)) {
+        return 0;
     }
+
+    // Tổng phút thô theo timestamp (an toàn tuyệt đối với TZ)
+    $all = intdiv($endAt->getTimestamp() - $startAt->getTimestamp(), 60);
+    if ($all <= 0) return 0;
+
+    // Nếu khoảng làm việc hoàn toàn ngoài giờ nghỉ → trả luôn
+    if ($endAt->lte($b1) || $startAt->gte($b2)) {
+        return $all;
+    }
+
+    // Trừ phần overlap với giờ nghỉ
+    $overlapStart = $startAt->max($b1);
+    $overlapEnd   = $endAt->min($b2);
+    $overlap = 0;
+    if ($overlapEnd->greaterThan($overlapStart)) {
+        $overlap = intdiv($overlapEnd->getTimestamp() - $overlapStart->getTimestamp(), 60);
+    }
+
+    $worked = $all - $overlap;
+    return $worked > 0 ? $worked : 0;
+}
+
 
     /**
      * Tổng hợp nghỉ phép theo overlap tu_ngay/den_ngay trong khoảng kỳ [start,end].

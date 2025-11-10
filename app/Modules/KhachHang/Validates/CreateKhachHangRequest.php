@@ -24,7 +24,8 @@ class CreateKhachHangRequest extends FormRequest
             'email'          => 'nullable|email|max:255|unique:khach_hangs,email',
 
             'so_dien_thoai'  => 'required|string|max:255|unique:khach_hangs,so_dien_thoai',
-            'dia_chi'        => 'required|string|max:255',
+          'dia_chi'        => 'nullable|string|max:255',
+
             'ghi_chu'        => 'nullable|string|max:255',
 
             // Kênh liên hệ: BẮT BUỘC + phải nằm trong danh sách cố định

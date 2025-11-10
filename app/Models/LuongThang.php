@@ -71,6 +71,7 @@ class LuongThang extends Model
         'computed_at'     => 'datetime',
         'created_at'      => 'datetime',
         'updated_at'      => 'datetime',
+         'ghi_chu'         => 'array',
     ];
 
     // ===== Quan hệ =====

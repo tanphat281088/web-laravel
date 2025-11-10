@@ -88,26 +88,30 @@ $bc = BangCongThang::query()
         // 2) Lấy profile lương (hoặc default)
         $profile = LuongProfile::query()->ofUser($userId)->first();
 
+
+
 $cfg = [
-    'luong_co_ban'        => (int)   ($profile->muc_luong_co_ban    ?? $this->defaults['muc_luong_co_ban']),
-    'cong_chuan'          => (int)   ($profile->cong_chuan          ?? $this->defaults['cong_chuan']),
-    'he_so'               => (float) ($profile->he_so               ?? $this->defaults['he_so']),
-    'phu_cap_def'         => (int)   ($profile->phu_cap_mac_dinh    ?? $this->defaults['phu_cap_mac_dinh']),
-    'pt_bhxh'             => (float) ($profile->pt_bhxh             ?? $this->defaults['pt_bhxh']),
-    'pt_bhyt'             => (float) ($profile->pt_bhyt             ?? $this->defaults['pt_bhyt']),
-    'pt_bhtn'             => (float) ($profile->pt_bhtn             ?? $this->defaults['pt_bhtn']),
+    'luong_co_ban'        => (int)   ($profile?->muc_luong_co_ban    ?? $this->defaults['muc_luong_co_ban']),
+    'cong_chuan'          => (int)   ($profile?->cong_chuan          ?? $this->defaults['cong_chuan']),
+    'he_so'               => (float) ($profile?->he_so               ?? $this->defaults['he_so']),
+    'phu_cap_def'         => (int)   ($profile?->phu_cap_mac_dinh    ?? $this->defaults['phu_cap_mac_dinh']),
+    'pt_bhxh'             => (float) ($profile?->pt_bhxh             ?? $this->defaults['pt_bhxh']),
+    'pt_bhyt'             => (float) ($profile?->pt_bhyt             ?? $this->defaults['pt_bhyt']),
+    'pt_bhtn'             => (float) ($profile?->pt_bhtn             ?? $this->defaults['pt_bhtn']),
 
-    // ===== NEW (đọc có-đọc-không-thôi, an toàn nếu cột chưa có) =====
-    'salary_mode'         => (string)($profile->salary_mode         ?? $this->defaults['salary_mode']),
-    'apply_insurance'     => (int)   ($profile->apply_insurance     ?? $this->defaults['apply_insurance']),
-    'insurance_base_mode' => (string)($profile->insurance_base_mode ?? $this->defaults['insurance_base_mode']),
-    'cong_chuan_override' => (int)   ($profile->cong_chuan_override ?? $this->defaults['cong_chuan_override']),
+    'salary_mode'         => (string)($profile?->salary_mode         ?? $this->defaults['salary_mode']),
+    'apply_insurance'     => (int)   ($profile?->apply_insurance     ?? $this->defaults['apply_insurance']),
+    'insurance_base_mode' => (string)($profile?->insurance_base_mode ?? $this->defaults['insurance_base_mode']),
+    'cong_chuan_override' => (int)   ($profile?->cong_chuan_override ?? $this->defaults['cong_chuan_override']),
 
-    'support_allowance'   => (int)   ($profile->support_allowance   ?? $this->defaults['support_allowance']),
-    'phone_allowance'     => (int)   ($profile->phone_allowance     ?? $this->defaults['phone_allowance']),
-    'meal_per_day'        => (int)   ($profile->meal_per_day        ?? $this->defaults['meal_per_day']),
-    'meal_extra_default'  => (int)   ($profile->meal_extra_default  ?? $this->defaults['meal_extra_default']),
+    'support_allowance'   => (int)   ($profile?->support_allowance   ?? $this->defaults['support_allowance']),
+    'phone_allowance'     => (int)   ($profile?->phone_allowance     ?? $this->defaults['phone_allowance']),
+    'meal_per_day'        => (int)   ($profile?->meal_per_day        ?? $this->defaults['meal_per_day']),
+    'meal_extra_default'  => (int)   ($profile?->meal_extra_default  ?? $this->defaults['meal_extra_default']),
 ];
+
+
+
 
 
         // 3) Chỉ số công (nếu chưa có bảng công => 0)
@@ -148,9 +152,11 @@ if (!$cfg['apply_insurance'] || $cfg['insurance_base_mode'] === 'none') {
 
 
         // 5) Upsert an toàn (bỏ qua dòng locked)
-        DB::transaction(function () use (
-            $thang, $userId, $cfg, $soNgayCong, $soGioCong, $luongTheoCong, $bhxh, $bhyt, $bhtn,$congChuanEff, $dailyRate, $prorate, $bhBase
-        ) {
+      DB::transaction(function () use (
+    $thang, $userId, $cfg, $soNgayCong, $soGioCong, $luongTheoCong,
+    $bhxh, $bhyt, $bhtn, $congChuanEff, $dailyRate, $prorate, $bhBase, $baseXHeSo
+) {
+
             /** @var LuongThang|null $row */
             $row = LuongThang::query()
                 ->ofUser($userId)
@@ -201,7 +207,7 @@ $note = [
     'prorate'     => $prorate,
     'bh_base'     => $bhBase,
 ];
-$row->ghi_chu = $note;
+$row->ghi_chu = json_encode($note, JSON_UNESCAPED_UNICODE);
 
 
             // Tính thực nhận với các khoản cộng/trừ hiện có trên dòng
