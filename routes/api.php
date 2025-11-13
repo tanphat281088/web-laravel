@@ -43,6 +43,9 @@ use App\Modules\CongNoKH\CongNoKhController; // MỚI: Công nợ khách hàng (
 
 use App\Http\Controllers\Cash\CashAuditController;  // ⬅️ thêm dòng này
 
+use App\Http\Controllers\Reports\FinanceReportController; // NEW: Báo cáo Tài chính
+
+
 
 
 use App\Modules\NhanSu\Payroll\BangLuongMeController;         // MỚI: Bảng lương (của tôi)
@@ -407,6 +410,22 @@ Route::prefix('utilities')->group(function () {
       Route::get('/kqkd-export', [BaoCaoQuanTriController::class, 'kqkdExport']);  // nếu bạn đã thêm export
   });
 
+
+  // ===== Báo cáo quản trị → Báo cáo Tài chính (READ-ONLY) =====
+Route::prefix('bao-cao-quan-tri/tai-chinh')
+    ->middleware('perm:bao-cao-tai-chinh.index') // chỉ cần quyền xem
+    ->group(function () {
+        // 1 call tổng hợp KPI + chỉ số nâng cao
+        Route::get('/summary',     [FinanceReportController::class, 'summary']);
+
+        // Drill-down (paging + q + from/to)
+        Route::get('/receivables', [FinanceReportController::class, 'receivables']); // Công nợ KH (list theo KH)
+        Route::get('/orders',      [FinanceReportController::class, 'orders']);      // Đơn hàng trong kỳ
+        Route::get('/receipts',    [FinanceReportController::class, 'receipts']);    // Phiếu thu trong kỳ
+        Route::get('/payments',    [FinanceReportController::class, 'payments']);    // Phiếu chi trong kỳ
+        Route::get('/ledger',      [FinanceReportController::class, 'ledger']);      // Sổ quỹ theo tài khoản
+    });
+
   // ================== Quản lý giao hàng ==================
   // 3 tab: Đơn hôm nay, Lịch giao hôm nay, Lịch giao tổng
   Route::prefix('giao-hang')->group(function () {
@@ -455,6 +474,31 @@ Route::prefix('utilities')->group(function () {
   });
   // ====================================================================================
 
+// ================== CSKH → Đánh giá dịch vụ (ZNS Review) ==================
+Route::prefix('cskh/reviews')
+    ->middleware(['jwt', env('PERMISSION_ENGINE', 'permission') === 'v2' ? \App\Http\Middleware\PermissionV2::class : \App\Http\Middleware\Permission::class])
+    ->group(function () {
+        // Quyền gợi ý: cskh-review.index|create|send|bulk
+        Route::get   ('/invites',                 [\App\Modules\CSKH\ReviewInviteController::class, 'index'])
+            ->middleware('perm:cskh-review.index');
+
+        Route::post  ('/invites/from-order/{id}', [\App\Modules\CSKH\ReviewInviteController::class, 'createFromOrder'])
+            ->whereNumber('id')
+            ->middleware('perm:cskh-review.create');
+
+        Route::post  ('/invites/{id}/send',       [\App\Modules\CSKH\ReviewInviteController::class, 'send'])
+            ->whereNumber('id')
+            ->middleware('perm:cskh-review.send');
+
+        Route::post  ('/bulk-send',               [\App\Modules\CSKH\ReviewInviteController::class, 'bulkSend'])
+            ->middleware('perm:cskh-review.bulk');
+        Route::post('/backfill', [\App\Modules\CSKH\ReviewInviteController::class, 'backfill'])
+            ->middleware('perm:cskh-review.bulk');
+
+        Route::patch ('/invites/{id}/cancel',     [\App\Modules\CSKH\ReviewInviteController::class, 'cancel'])
+            ->whereNumber('id')
+            ->middleware('perm:cskh-review.send');
+    });
 
 
   // PhieuXuatKho

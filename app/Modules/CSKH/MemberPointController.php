@@ -232,14 +232,17 @@ class MemberPointController extends Controller
             'template_id' => ['nullable','string','max:64'],
         ]);
 
+        \Log::info('[PTS][SEND] enter', ['eventId' => $eventId]);
+
         $event = DB::table('khach_hang_point_events')->where('id', $eventId)->first();
         if (!$event) {
             return CustomResponse::error('Không tìm thấy biến động.', 404);
         }
 
-        if ($event->zns_status !== 'pending') {
-            return CustomResponse::error('Biến động này đã được xử lý gửi ZNS trước đó.', 400);
-        }
+     if (!in_array($event->zns_status, ['pending','failed'], true)) {
+    return CustomResponse::error('Biến động này đã được xử lý gửi ZNS trước đó.', 400);
+}
+
 
         $kh = DB::table('khach_hangs')->where('id', $event->khach_hang_id)->first();
         if (!$kh) {
@@ -266,7 +269,9 @@ class MemberPointController extends Controller
         $note = $validated['note'] ?? $event->note ?? '';
 
         $params = [
-            'customer_code' => (string) ($kh->ma_khach_hang ?? $kh->id),
+            'customer_name' => (string) ($kh->ten_khach_hang ?? ''), 
+        'customer_code' => (string) ($kh->ma_kh ?? $kh->id),
+
             'order_code'    => (string) ($event->order_code ?? $dh->ma_don_hang ?? $dh->id),
             'order_date'    => $this->formatZnsDate($event->order_date),
             'price'         => (string) ($event->price ?? 0),
@@ -274,6 +279,14 @@ class MemberPointController extends Controller
             'total_point'   => (string) ($event->new_points ?? 0),
             'note'          => (string) $note,
         ];
+
+\Log::info('[PTS][SEND] payload', [
+    'eventId'    => $eventId,
+    'phone'      => $phone,
+    'templateId' => $templateId,
+    'params'     => $params,
+]);
+
 
         try {
             /** @var \App\Services\Zns\ZnsProvider $provider */
@@ -288,7 +301,8 @@ class MemberPointController extends Controller
             $now = Carbon::now();
             $affected = DB::table('khach_hang_point_events')
                 ->where('id', $eventId)
-                ->where('zns_status', 'pending')
+           ->whereIn('zns_status', ['pending','failed'])
+
                 ->update([
                     'zns_status'       => $res->success ? 'sent' : 'failed',
                     'zns_sent_at'      => $now,
@@ -315,10 +329,12 @@ class MemberPointController extends Controller
 
         } catch (\Throwable $e) {
             report($e);
+            \Log::error('[PTS][SEND] exception', ['eventId' => $eventId, 'err' => $e->getMessage()]);
+
             $now = Carbon::now();
             DB::table('khach_hang_point_events')
                 ->where('id', $eventId)
-                ->where('zns_status', 'pending')
+              ->whereIn('zns_status', ['pending','failed']) 
                 ->update([
                     'zns_status'        => 'failed',
                     'zns_sent_at'       => $now,
@@ -349,13 +365,15 @@ class MemberPointController extends Controller
     }
 
     /** Định dạng ngày theo template ZNS (dd/MM/yyyy HH:mm) */
-    private function formatZnsDate($dt): string
-    {
-        try {
-            return Carbon::parse($dt, config('app.timezone', 'Asia/Ho_Chi_Minh'))
-                ->format('d/m/Y H:i');
-        } catch (\Throwable $e) {
-            return '';
-        }
+/** Định dạng ngày theo template ZNS (dd/MM/yyyy) */
+private function formatZnsDate($dt): string
+{
+    try {
+        return Carbon::parse($dt, config('app.timezone', 'Asia/Ho_Chi_Minh'))
+            ->format('d/m/Y'); // ⬅️ chỉ gửi ngày
+    } catch (\Throwable $e) {
+        return '';
     }
+}
+
 }

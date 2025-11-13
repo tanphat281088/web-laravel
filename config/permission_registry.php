@@ -69,7 +69,20 @@ return [
   ['name' => 'bao-cao-thu-chi',    'actions' => ['showMenu'=>false,'index'=>false,'show'=>false,'create'=>false,'edit'=>false,'delete'=>false,'export'=>false]],
   ['name' => 'bao-cao-quan-tri',   'actions' => ['showMenu'=>false,'index'=>false,'show'=>false,'create'=>false,'edit'=>false,'delete'=>false,'export'=>false]],
 
-    // ===== KIỂM TOÁN (Tra soát lệch phiếu ↔ sổ quỹ) =====
+    
+  ['name' => 'bao-cao-tai-chinh', 'actions' => [
+    'showMenu' => false,
+    'index'    => false,
+    'show'     => false,
+    'create'   => false,
+    'edit'     => false,
+    'delete'   => false,
+    'export'   => false,
+]],
+
+  
+  
+  // ===== KIỂM TOÁN (Tra soát lệch phiếu ↔ sổ quỹ) =====
   ['name' => 'kiem-toan',          'actions' => [
       'showMenu' => false,   // hiện/ẩn tab/menu
       'index'    => false,   // quyền xem tra soát
@@ -85,6 +98,22 @@ return [
   ['name' => 'cskh',               'actions' => ['showMenu'=>false,'index'=>false]], // cha (menu)
   // Đặc thù: sendZns
   ['name' => 'cskh-points',        'actions' => ['showMenu'=>false,'index'=>false,'show'=>false,'create'=>false,'edit'=>false,'delete'=>false,'export'=>false,'sendZns'=>false]],
+
+  // CSKH → Đánh giá dịch vụ (ZNS Review)
+  ['name' => 'cskh-review', 'actions' => [
+      'showMenu' => false,  // chỉ bật true nếu muốn hiện riêng trên Sidebar (thường false)
+      'index'    => false,  // GET /cskh/reviews/invites
+      'show'     => false,  // không dùng riêng, middleware có fallback show ← index
+      'create'   => false,  // POST /cskh/reviews/invites/from-order/{id}
+      'edit'     => false,  // không dùng
+      'delete'   => false,  // không dùng
+      'export'   => false,  // chưa dùng
+      // Đặc thù:
+      'send'     => false,  // POST /cskh/reviews/invites/{id}/send
+      'bulk'     => false,  // POST /cskh/reviews/bulk-send
+      'cancel'   => false,  // PATCH /cskh/reviews/invites/{id}/cancel
+  ]],
+
 
   // ===== UTILITIES =====
   ['name' => 'utilities',          'actions' => ['showMenu'=>false,'index'=>false]], // cha (menu)

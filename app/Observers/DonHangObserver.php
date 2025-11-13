@@ -8,6 +8,9 @@ use App\Services\MemberPointService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
+use App\Services\Zns\ZnsReviewService;
+
+
 class DonHangObserver
 {
     public function created(DonHang $donHang): void
@@ -43,7 +46,12 @@ class DonHangObserver
     {
         try {
             // 1) Snapshot TRƯỚC khi auto-sync có thể thay đổi trạng thái
-            $was = (int) ($donHang->getOriginal('trang_thai_thanh_toan') ?? 0);
+       $was        = (int) ($donHang->getOriginal('trang_thai_thanh_toan') ?? 0);
+$shipWas    = (int) ($donHang->getOriginal('trang_thai_don_hang') ?? 0);
+$recvWas    = $donHang->getOriginal('nguoi_nhan_thoi_gian');
+$payTypeWas = (int) ($donHang->getOriginal('loai_thanh_toan') ?? 0);
+
+
 
             // Theo dõi field thanh toán để biết khi nào cần sync-by-order
             $payFields = ['loai_thanh_toan', 'so_tien_da_thanh_toan', 'tong_tien_thanh_toan'];
@@ -63,7 +71,12 @@ class DonHangObserver
             app(AutoPhieuThuService::class)->syncAutoReceiptForOrder($donHang);
 
             // 3) Lấy trạng thái CUỐI SAU khi cân phiếu
-            $now = (int) ($donHang->fresh()->trang_thai_thanh_toan ?? 0);
+        $now        = (int) ($donHang->fresh()->trang_thai_thanh_toan ?? 0);
+$shipNow    = (int) ($donHang->fresh()->trang_thai_don_hang ?? 0);
+$recvNow    = $donHang->fresh()->nguoi_nhan_thoi_gian;
+$payTypeNow = (int) ($donHang->fresh()->loai_thanh_toan ?? 0);
+
+
 
             // Nếu vẫn chưa có KH hệ thống VÀ cũng không phải ca vừa gán -> bỏ qua phần điểm
             if (!$donHang->khach_hang_id && !$justLinkedCustomer) {
@@ -79,12 +92,41 @@ class DonHangObserver
                 }
                 // Không return: vẫn cho phép các nhánh dưới xử lý nếu có thay đổi trạng thái/tiền
             }
+// ⭐⭐ REVIEW: Nếu vừa gán KH & đơn đã GIAO & đã THANH TOÁN → tạo invite (idempotent)
+$deliveredNow = ($shipNow === 2) || !empty($recvNow);     // 2 = Đã giao, hoặc có thời điểm nhận
+$paidNow      = ($now === 1) || ($payTypeNow === 2);      // 1 = TT hoàn thành, hoặc loai_thanh_toan = 2 (full)
+if ($justLinkedCustomer && $deliveredNow && $paidNow) {
+    try {
+        app(ZnsReviewService::class)->upsertInviteFromOrder((int) $donHang->id);
+    } catch (\Throwable $e) {
+        Log::warning('[REVIEW][link-customer] upsert failed', ['don_id' => $donHang->id, 'err' => $e->getMessage()]);
+    }
+}
+
 
             // 4) Đồng bộ sau commit dựa trên (was, now) + các thay đổi liên quan
-            DB::afterCommit(function () use ($donHang, $was, $now, $changedPayFields, $justLinkedCustomer) {
+DB::afterCommit(function () use ($donHang, $was, $now, $shipWas, $shipNow, $recvWas, $recvNow, $payTypeWas, $payTypeNow, $changedPayFields, $justLinkedCustomer) {
+
+
                 try {
                     /** @var MemberPointService $svc */
                     $svc = app(MemberPointService::class);
+
+// ⭐⭐ REVIEW: chỉ tạo invite khi chuyển sang GIAO & TT và hiện đang thỏa cả 2
+$deliveredJustNow = (($shipWas !== 2 && $shipNow === 2) || (empty($recvWas) && !empty($recvNow)));
+$paidJustNow      = (($was !== 1 && $now === 1) || ($payTypeWas !== 2 && $payTypeNow === 2));
+
+$deliveredNow = ($shipNow === 2) || !empty($recvNow);
+$paidNow      = ($now === 1) || ($payTypeNow === 2);
+
+if (($deliveredJustNow || $paidJustNow) && $deliveredNow && $paidNow && $donHang->khach_hang_id) {
+    try {
+        app(ZnsReviewService::class)->upsertInviteFromOrder((int) $donHang->id);
+    } catch (\Throwable $e) {
+        Log::warning('[REVIEW][state-change] upsert failed', ['don_id' => $donHang->id, 'err' => $e->getMessage()]);
+    }
+}
+
 
                     // Giữ nguyên hành vi khi qua/vượt mốc "đã thanh toán"
                     if ($was !== 2 && $now === 2) {

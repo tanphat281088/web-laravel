@@ -29,6 +29,9 @@ class PermissionV2
         'cskh/points'          => 'cskh-points',
         'cskh-points'          => 'cskh-points',
         'cskh'                 => 'cskh',         // menu cha
+        // CSKH → Đánh giá dịch vụ (ZNS Review)
+'cskh/reviews'         => 'cskh-review',
+
 
         // Utilities
         'utilities/fb'         => 'utilities-fb',
@@ -95,6 +98,8 @@ class PermissionV2
         'phieu-chi'            => 'phieu-chi',
         'thu-chi/bao-cao'      => 'bao-cao-thu-chi',
         'bao-cao-quan-tri'     => 'bao-cao-quan-tri',
+        'bao-cao-quan-tri/tai-chinh' => 'bao-cao-tai-chinh',
+
     ];
 
     /** Public patterns (webhook/OAuth/options/template…) — tối thiểu & an toàn */
@@ -268,6 +273,27 @@ if (!$granted && str_starts_with($module, 'cash-')) {
             return 'sendZns';
         }
 
+                // 4b) Đặc thù — CSKH Review (Đánh giá dịch vụ)
+        if (preg_match('#^cskh/reviews/invites/\d+/send$#', $path) === 1 && $method === 'POST') {
+            return 'send';          // gửi 1 lời mời
+        }
+        if (preg_match('#^cskh/reviews/bulk-send$#', $path) === 1 && $method === 'POST') {
+            return 'bulk';          // gửi hàng loạt
+        }
+        if (preg_match('#^cskh/reviews/invites/\d+/cancel$#', $path) === 1 && $method === 'PATCH') {
+            return 'cancel';        // huỷ lời mời pending
+        }
+        // POST /cskh/reviews/invites/from-order/{id} → semantic là tạo mới từ đơn (có {id})
+        if (preg_match('#^cskh/reviews/invites/from-order/\d+$#', $path) === 1 && $method === 'POST') {
+            return 'create';        // tạo invite từ đơn
+        }
+
+        // /cskh/reviews/backfill -> dùng action 'bulk'
+        if (preg_match('#^cskh/reviews/backfill$#', $path) === 1 && $method === 'POST') {
+            return 'bulk';
+        }
+
+
         // 5) Đặc thù — Giao hàng: notify-and-set-status
         if (preg_match('#^giao-hang/\d+/notify-and-set-status$#', $path) === 1 && $method === 'POST') {
             return 'notifyAndSetStatus';
@@ -362,24 +388,27 @@ if (preg_match('#^nhan-su/don-tu/\d+/cancel$#', $path) === 1 && $method === 'PAT
 
 
         // 8) Chuẩn CRUD
-        $parts = explode('/', $path);
-        $hasId = isset($parts[1]) && is_numeric($parts[1]);
+       // 8) Chuẩn CRUD — nhận diện {id} theo segment CUỐI để hỗ trợ nested prefix (vd: vt/receipts/{id})
+$parts = explode('/', trim($path, '/'));
+$last  = $parts[count($parts) - 1] ?? null;
+$hasId = is_numeric($last);
 
-        if (!$hasId) {
-            // /prefix
-            return match ($method) {
-                'GET'  => 'index',
-                'POST' => 'create',
-                default => null,
-            };
-        } else {
-            // /prefix/{id} (và các biến thể PUT/PATCH/DELETE)
-            return match ($method) {
-                'GET'           => 'show',
-                'PUT', 'PATCH'  => 'edit',
-                'DELETE'        => 'delete',
-                default         => null,
-            };
-        }
+if ($hasId) {
+    // /.../{id}
+    return match ($method) {
+        'GET'           => 'show',
+        'PUT', 'PATCH'  => 'edit',
+        'DELETE'        => 'delete',
+        default         => null,
+    };
+} else {
+    // /... (không có id)
+    return match ($method) {
+        'GET'  => 'index',
+        'POST' => 'create',
+        default => null,
+    };
+}
+
     }
 }

@@ -35,6 +35,8 @@ class AppServiceProvider extends ServiceProvider
     if ($this->app->runningInConsole()) {
       $this->commands([
         MakeModuleCommand::class,
+        \App\Console\Commands\ZnsReviewBackfill::class,
+
       ]);
     }
 

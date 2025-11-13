@@ -77,22 +77,19 @@ class ZnsProvider
         // Chuẩn bị payload theo thói quen API ZNS
         // - phone: số đích
         // - template_id: id mẫu ZNS đã ENABLE
-        // - template_data.params: mảng [ { key, value }, ... ]
-        $paramItems = [];
-        foreach ($params as $k => $v) {
-            $paramItems[] = [
-                'key'   => (string) $k,
-                'value' => is_scalar($v) ? (string) $v : json_encode($v, JSON_UNESCAPED_UNICODE),
-            ];
-        }
+// - template_data: object key-value theo yêu cầu một số OA
+$templateDataAssoc = [];
+foreach ($params as $k => $v) {
+    $templateDataAssoc[(string)$k] = is_scalar($v) ? (string)$v : json_encode($v, JSON_UNESCAPED_UNICODE);
+}
 
-        $payload = [
-            'phone'         => (string) $phoneE164,
-            'template_id'   => (string) $templateId,
-            'template_data' => [
-                'params' => $paramItems,
-            ],
-        ];
+
+$payload = [
+    'phone'         => (string) $phoneE164,
+    'template_id'   => (string) $templateId,
+    'template_data' => $templateDataAssoc,   // ⬅️ gửi object KV trực tiếp
+];
+
 
         // (Tuỳ chọn) kèm tracking để đối soát
         if (!empty($meta)) {
@@ -137,6 +134,8 @@ class ZnsProvider
 
                 $httpCode = $resp->getStatusCode();
                 $raw      = (string) $resp->getBody();
+                \Log::info('[ZNS][HTTP]', ['code'=>$httpCode, 'raw'=>$raw, 'payload'=>$payload]);
+
                 $json     = null;
                 try { $json = json_decode($raw, true, 512, JSON_THROW_ON_ERROR); } catch (\Throwable $e) {}
 
