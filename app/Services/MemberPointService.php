@@ -117,14 +117,21 @@ class MemberPointService
                 $tierChangedTo = $this->updateCustomerTierIfNeeded($khLocked->id, $newRevenue);
             }
 
-            // Cache dữ liệu đơn tại thời điểm sự kiện
-            $donFresh   = DonHang::query()->select('id','ma_don_hang','nguoi_nhan_thoi_gian','updated_at')
-              ->find($don->id); // luôn đọc lại sau khi đã save/mã đã sinh
-$orderCode  = $donFresh->ma_don_hang
-              ?: ('DH' . str_pad((string)$donFresh->id, 5, '0', STR_PAD_LEFT)); // fallback an toàn
+// Cache dữ liệu đơn tại thời điểm sự kiện
+$donFresh   = DonHang::query()
+    ->select('id','ma_don_hang','ngay_tao_don_hang','nguoi_nhan_thoi_gian','created_at','updated_at')
+    ->find($don->id); // luôn đọc lại sau khi đã save/mã đã sinh
 
-            // Thời điểm thanh toán/hoàn tất: nếu có cột riêng thì thay tại đây; tạm dùng now()
-            $orderDate  = Carbon::now();
+$orderCode  = $donFresh->ma_don_hang
+    ?: ('DH' . str_pad((string)$donFresh->id, 5, '0', STR_PAD_LEFT)); // fallback an toàn
+
+// Ngày mua hàng: ưu tiên ngay_tao_don_hang, fallback created_at/nguoi_nhan_thoi_gian/updated_at
+$orderDate  = $donFresh->ngay_tao_don_hang
+    ?? $donFresh->created_at
+    ?? $donFresh->nguoi_nhan_thoi_gian
+    ?? $donFresh->updated_at
+    ?? Carbon::now();
+
 
             // Tạo sự kiện (pending để UI chủ động gửi ZNS)
             $eventId = DB::table('khach_hang_point_events')->insertGetId([
@@ -323,6 +330,13 @@ $now = Carbon::now();
      * - Nếu chênh ≠ 0: tạo 1 event bù (±), cập nhật doanh_thu_tich_luy + delta_points theo tổng tích luỹ.
      * - Không đụng các hàm cũ (recordPaidOrder/reversePaidOrder).
      */
+    /**
+     * ⭐ MỚI: Đồng bộ điểm theo trạng thái & số tiền hiện tại của ĐƠN.
+     * - So sánh "doanh thu mục tiêu" (theo loai_thanh_toan + trạng_thái_thanh_toán) 
+     *   với "tổng price đã ghi" cho chính đơn.
+     * - Nếu chênh ≠ 0: tạo 1 event bù (±), cập nhật doanh_thu_tich_luy + delta_points theo tổng tích luỹ.
+     * - Không đụng các hàm cũ (recordPaidOrder/reversePaidOrder).
+     */
     public function syncByOrder(int $donHangId): array
     {
         $rateVnd    = (int) (env('POINT_VND_RATE', 1000));
@@ -334,17 +348,31 @@ $now = Carbon::now();
             return ['ok' => false, 'reason' => 'ORDER_OR_CUSTOMER_NOT_FOUND', 'don_hang_id' => $donHangId];
         }
 
-        return DB::transaction(function () use ($don, $rateVnd, $updateTier) {
-            // 1) Tính "doanh thu mục tiêu" theo LOẠI THANH TOÁN hiện tại
+        // ✅ XÁC ĐỊNH ĐƠN ĐANG ĐƯỢC COI LÀ "ĐÃ THANH TOÁN" (paid)
+        // - ĐÃ TT nếu: trang_thai_thanh_toan = 1 (hoàn thành) HOẶC loai_thanh_toan = 2 (full)
+        // - Nếu KHÔNG paid: ta vẫn cho chạy, nhưng ép targetRevenue = 0 để TỰ ĐỘNG HOÀN điểm nếu trước đó đã cộng.
+        $paid = ((int)($don->trang_thai_thanh_toan ?? 0) === 1)
+             || ((int)($don->loai_thanh_toan ?? 0) === 2);
+
+        return DB::transaction(function () use ($don, $rateVnd, $updateTier, $paid) {
+            // 1) Tính "doanh thu mục tiêu" gốc theo LOẠI THANH TOÁN hiện tại
             //    2: toàn bộ  -> dùng tong_tien_thanh_toan (fallback: tong_tien_can_thanh_toan)
             //    1: một phần -> so_tien_da_thanh_toan
-            //    0: chưa thanh toán -> 0
+            //    0: default  -> 0
             $targetRevenue = match ((int) ($don->loai_thanh_toan ?? 0)) {
                 2       => (int) ($don->tong_tien_thanh_toan ?? $don->tong_tien_can_thanh_toan ?? 0),
                 1       => (int) ($don->so_tien_da_thanh_toan ?? 0),
                 default => 0,
             };
+
+            // Không cho targetRevenue âm
             $targetRevenue = max(0, $targetRevenue);
+
+            // ❗ Nếu đơn HIỆN TẠI KHÔNG CÒN ĐƯỢC COI LÀ ĐÃ THANH TOÁN
+            //    → ép targetRevenue = 0 để nó tự trừ hết phần đã cộng trước đó (nếu có)
+            if (!$paid) {
+                $targetRevenue = 0;
+            }
 
             // 2) Tổng price đã ghi cho RIÊNG order này (có thể âm/dương)
             $existingRevenue = (int) DB::table('khach_hang_point_events')
@@ -354,13 +382,13 @@ $now = Carbon::now();
             $deltaRevenue = $targetRevenue - $existingRevenue;
             if ($deltaRevenue === 0) {
                 return [
-                    'ok' => true,
-                    'idempotent' => true,
-                    'skipped' => 'NO_CHANGE',
-                    'don_hang_id' => $don->id,
-                    'target_revenue' => $targetRevenue,
+                    'ok'               => true,
+                    'idempotent'       => true,
+                    'skipped'          => 'NO_CHANGE',
+                    'don_hang_id'      => $don->id,
+                    'target_revenue'   => $targetRevenue,
                     'existing_revenue' => $existingRevenue,
-                    'delta_revenue' => 0,
+                    'delta_revenue'    => 0,
                 ];
             }
 
@@ -391,18 +419,23 @@ $now = Carbon::now();
             }
 
             // 5) Ghi 1 event bù cho ORDER này
-            $donFresh  = DonHang::query()
-    ->select('id','ma_don_hang','nguoi_nhan_thoi_gian','updated_at')
+          $donFresh  = DonHang::query()
+    ->select('id','ma_don_hang','ngay_tao_don_hang','nguoi_nhan_thoi_gian','created_at','updated_at')
     ->find($don->id);
 $orderCode = $donFresh->ma_don_hang
     ?: ('DH' . str_pad((string)$donFresh->id, 5, '0', STR_PAD_LEFT));
 
-            $now = Carbon::now();
-            $eventId = DB::table('khach_hang_point_events')->insertGetId([
-                'khach_hang_id'   => $khLocked->id,
-                'don_hang_id'     => $don->id,
-                'order_code' => $orderCode,
-                'order_date' => $donFresh->nguoi_nhan_thoi_gian ?? $donFresh->updated_at ?? $now, // (thay cho $don->nguoi_nhan_thoi_gian ?? $don->updated_at ?? $now)
+$now = Carbon::now();
+$eventId = DB::table('khach_hang_point_events')->insertGetId([
+    'khach_hang_id'   => $khLocked->id,
+    'don_hang_id'     => $don->id,
+    'order_code'      => $orderCode,
+    // Ngày mua hàng: ưu tiên ngay_tao_don_hang
+    'order_date'      => $donFresh->ngay_tao_don_hang
+                          ?? $donFresh->created_at
+                          ?? $donFresh->nguoi_nhan_thoi_gian
+                          ?? $donFresh->updated_at
+                          ?? $now,
 
                 'price'           => $deltaRevenue,          // bù doanh thu cho đơn (±)
                 'old_revenue'     => $oldRevenueAll,
@@ -442,6 +475,7 @@ $orderCode = $donFresh->ma_don_hang
             ];
         });
     }
+
 
     /**
      * Lấy giá trị doanh thu dùng để tính điểm từ đơn hàng.

@@ -21,16 +21,7 @@ class DonHangObserver
         // 2) Đảm bảo lấy trạng thái/mã đơn MỚI nhất sau khi cân phiếu
         $donHang->refresh();
 
-        // 3) Nếu đơn mới đã = 2 → ghi điểm dương (idempotent, giữ nguyên hành vi)
-        try {
-            $now = (int) ($donHang->trang_thai_thanh_toan ?? 0);
-            if ($now === 2 && $donHang->khach_hang_id) {
-                // Gọi trực tiếp để chắc chắn chạy (không phụ thuộc afterCommit)
-                app(MemberPointService::class)->recordPaidOrder((int) $donHang->id);
-            }
-        } catch (\Throwable $e) {
-            Log::error('[POINT_EVENT][created-ex] ' . $e->getMessage(), ['don_id' => $donHang->id]);
-        }
+
 
         // 4) Luôn đồng bộ theo delta (±) để khớp tuyệt đối với loại/tiền hiện tại
         if ($donHang->khach_hang_id) {
@@ -54,7 +45,12 @@ $payTypeWas = (int) ($donHang->getOriginal('loai_thanh_toan') ?? 0);
 
 
             // Theo dõi field thanh toán để biết khi nào cần sync-by-order
-            $payFields = ['loai_thanh_toan', 'so_tien_da_thanh_toan', 'tong_tien_thanh_toan'];
+          $payFields = [
+  'loai_thanh_toan',
+  'so_tien_da_thanh_toan',
+  'tong_tien_thanh_toan',
+  'trang_thai_thanh_toan', // ⬅️ thêm dòng này
+];
             $changedPayFields = [];
             foreach ($payFields as $f) {
                 if ($donHang->getOriginal($f) !== $donHang->{$f}) {
@@ -128,39 +124,9 @@ if (($deliveredJustNow || $paidJustNow) && $deliveredNow && $paidNow && $donHang
 }
 
 
-                    // Giữ nguyên hành vi khi qua/vượt mốc "đã thanh toán"
-                    if ($was !== 2 && $now === 2) {
-                        // Chuyển sang "đã thanh toán" → cộng điểm (idempotent)
-                        $svc->recordPaidOrder((int) $donHang->id);
-                        // Đồng bộ tiếp theo delta (nếu partial -> full có chênh)
-                        $svc->syncByOrder((int) $donHang->id);
-                        return;
-                    }
 
-                    if ($was === 2 && $now !== 2) {
-                        // Rời khỏi "đã thanh toán" → trừ điểm (idempotent)
-                        $svc->reversePaidOrder((int) $donHang->id);
-                        // Đồng bộ tiếp theo delta (nếu còn chênh)
-                        $svc->syncByOrder((int) $donHang->id);
-                        return;
-                    }
 
-                    // Fallback dữ liệu cũ: nếu hiện không phải 2 nhưng từng cộng điểm mà chưa có reversal
-                    if ($now !== 2) {
-                        $hasPos = \DB::table('khach_hang_point_events')
-                            ->where('don_hang_id', $donHang->id)
-                            ->where('delta_points', '>', 0)
-                            ->exists();
 
-                        $hasNeg = \DB::table('khach_hang_point_events')
-                            ->where('don_hang_id', $donHang->id)
-                            ->where('delta_points', '<', 0)
-                            ->exists();
-
-                        if ($hasPos && !$hasNeg) {
-                            $svc->reversePaidOrder((int) $donHang->id);
-                        }
-                    }
 
                     // Nếu có thay đổi ở loại/tiền nhưng không qua mốc 2 -> vẫn cần sync theo delta
                     if (!empty($changedPayFields)) {

@@ -38,17 +38,34 @@ class MemberPointMaintenanceController extends Controller
         if ($to)   $q->where('dh.updated_at', '<=', $to   . ' 23:59:59');
 
         if ($only) {
-            // only_missing = true → chỉ lấy đơn đang lệch (target ≠ existing)
+            // only_missing = true → chỉ lấy đơn "đang lệch" theo đúng logic syncByOrder:
+            // - Nếu paid (trang_thai_thanh_toan=1 hoặc loai_thanh_toan=2):
+            //      loai_thanh_toan=2 → dùng tong_tien_thanh_toan (fallback: tong_tien_can_thanh_toan)
+            //      loai_thanh_toan=1 → dùng so_tien_da_thanh_toan
+            // - Nếu KHÔNG paid → target = 0 (phải xoá sạch điểm của đơn này)
             $q->whereRaw("
                 (
                   CASE 
-                    WHEN COALESCE(dh.loai_thanh_toan,0)=2 THEN COALESCE(dh.tong_tien_can_thanh_toan,0)
-                    WHEN COALESCE(dh.loai_thanh_toan,0)=1 THEN COALESCE(dh.so_tien_da_thanh_toan,0)
+                    WHEN (COALESCE(dh.trang_thai_thanh_toan,0) = 1 OR COALESCE(dh.loai_thanh_toan,0) = 2) THEN
+                      CASE 
+                        WHEN COALESCE(dh.loai_thanh_toan,0) = 2 
+                         THEN COALESCE(dh.tong_tien_can_thanh_toan, 0)
+                        WHEN COALESCE(dh.loai_thanh_toan,0) = 1 
+                          THEN COALESCE(dh.so_tien_da_thanh_toan, 0)
+                        ELSE 0
+                      END
                     ELSE 0
                   END
-                ) <> COALESCE((SELECT SUM(e.price) FROM khach_hang_point_events e WHERE e.don_hang_id = dh.id),0)
+                ) <> COALESCE(
+                      (SELECT SUM(e.price) 
+                         FROM khach_hang_point_events e 
+                        WHERE e.don_hang_id = dh.id
+                      ),
+                      0
+                    )
             ");
         }
+
 
         // Ưu tiên mới nhất
         $q->orderByDesc('dh.updated_at')->limit($limit);

@@ -22,10 +22,14 @@ class UpdateLoaiKhachHangRequest extends FormRequest
   public function rules(): array
   {
     return [
-      // Thêm các quy tắc validation cho cập nhật LoaiKhachHang ở đây
+      // 🔹 Các field có thể gửi lên khi cập nhật
       'ten_loai_khach_hang' => 'sometimes|required|string|max:255',
-      'nguong_doanh_thu' => 'sometimes|required|integer',
-      'trang_thai' => 'sometimes|required|in:0,1',
+      'nguong_doanh_thu'   => 'sometimes|required|numeric',
+
+      // 🔹 THÊM field giá trị ưu đãi (%)
+      'gia_tri_uu_dai'     => 'sometimes|required|integer|min:0|max:100',
+
+      'trang_thai'         => 'sometimes|required|in:0,1',
     ];
   }
 
@@ -36,6 +40,8 @@ class UpdateLoaiKhachHangRequest extends FormRequest
    */
   public function messages(): array
   {
-    return [];
+    return [
+      // Có thể để trống hoặc bổ sung nếu anh muốn custom message
+    ];
   }
 }

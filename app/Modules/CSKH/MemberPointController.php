@@ -114,8 +114,9 @@ class MemberPointController extends Controller
             kh.ma_kh          as ma_kh,
             kh.so_dien_thoai,
             kh.loai_khach_hang_id,
-            COALESCE(dh.ma_don_hang, CONCAT('DH', LPAD(dh.id,5,'0'))) as order_code,
-            COALESCE(dh.nguoi_nhan_thoi_gian, dh.updated_at, dh.created_at) as order_date,
+                COALESCE(dh.ma_don_hang, CONCAT('DH', LPAD(dh.id,5,'0'))) as order_code,
+            dh.ngay_tao_don_hang as order_date,
+
 
             (CASE
                 WHEN COALESCE(dh.loai_thanh_toan,0)=2 THEN COALESCE(dh.tong_tien_can_thanh_toan,0)
@@ -142,26 +143,14 @@ class MemberPointController extends Controller
         ->whereNotNull('dh.khach_hang_id'); // chỉ đơn có KH hệ thống
 
     // Lọc ngày theo order_date
+    // Lọc ngày theo NGÀY MUA HÀNG (ngay_tao_don_hang)
     if ($dateFrom) {
-        $orderAgg->where(function($x) use ($dateFrom, $tz) {
-            $x->whereNotNull('dh.nguoi_nhan_thoi_gian')
-              ->where('dh.nguoi_nhan_thoi_gian', '>=', \Carbon\Carbon::parse($dateFrom, $tz)->startOfDay())
-              ->orWhere(function($y) use ($dateFrom, $tz) {
-                  $y->whereNull('dh.nguoi_nhan_thoi_gian')
-                    ->where('dh.updated_at', '>=', \Carbon\Carbon::parse($dateFrom, $tz)->startOfDay());
-              });
-        });
+        $orderAgg->whereDate('dh.ngay_tao_don_hang', '>=', $dateFrom);
     }
     if ($dateTo) {
-        $orderAgg->where(function($x) use ($dateTo, $tz) {
-            $x->whereNotNull('dh.nguoi_nhan_thoi_gian')
-              ->where('dh.nguoi_nhan_thoi_gian', '<=', \Carbon\Carbon::parse($dateTo, $tz)->endOfDay())
-              ->orWhere(function($y) use ($dateTo, $tz) {
-                  $y->whereNull('dh.nguoi_nhan_thoi_gian')
-                    ->where('dh.updated_at', '<=', \Carbon\Carbon::parse($dateTo, $tz)->endOfDay());
-              });
-        });
+        $orderAgg->whereDate('dh.ngay_tao_don_hang', '<=', $dateTo);
     }
+
     if ($tierId) {
         $orderAgg->where('kh.loai_khach_hang_id', (int) $tierId);
     }
