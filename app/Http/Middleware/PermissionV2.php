@@ -77,6 +77,8 @@ class PermissionV2
         'loai-khach-hang'      => 'loai-khach-hang',
         'khach-hang'           => 'khach-hang',
         'khach-hang-vang-lai'  => 'khach-hang-vang-lai',
+        'khach-hang-pass-ctv'  => 'khach-hang-pass-ctv',
+
 
         'nha-cung-cap'         => 'nha-cung-cap',
         'danh-muc-san-pham'    => 'danh-muc-san-pham',
@@ -303,6 +305,15 @@ if (!$granted && str_starts_with($module, 'cash-')) {
         if (preg_match('#^khach-hang-vang-lai/convert$#', $path) === 1 && $method === 'POST') {
             return 'convert';
         }
+
+        // 6b) Đặc thù — Khách hàng Pass đơn & CTV: convert
+        if (preg_match('#^khach-hang-pass-ctv/convert-to-pass/\d+$#', $path) === 1 && $method === 'POST') {
+            return 'convert';
+        }
+        if (preg_match('#^khach-hang-pass-ctv/convert-to-normal/\d+$#', $path) === 1 && $method === 'POST') {
+            return 'convert';
+        }
+
 
         // 7) Đặc thù — Cash internal transfers: post/unpost
         if (preg_match('#^cash/internal-transfers/\d+/post$#', $path) === 1 && $method === 'POST') {

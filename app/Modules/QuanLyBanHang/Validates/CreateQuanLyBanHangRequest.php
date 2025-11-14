@@ -48,6 +48,10 @@ class CreateQuanLyBanHangRequest extends FormRequest
 
       // ===== Chi phí – giảm trừ (đơn giá đã gồm VAT, không dùng VAT nữa) =====
       'giam_gia'           => ['required', 'numeric', 'min:0'],
+            // Giảm giá thành viên (%), không bắt buộc – BE sẽ tính tiền từ % này
+      'giam_gia_thanh_vien' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100'],
+
+
       'chi_phi'            => ['required', 'numeric', 'min:0'],
 
       // ===== Thanh toán =====
@@ -136,6 +140,10 @@ class CreateQuanLyBanHangRequest extends FormRequest
       'chi_phi.required'  => 'Chi phí là bắt buộc',
       'chi_phi.numeric'   => 'Chi phí phải là số',
       'chi_phi.min'       => 'Chi phí không được âm',
+            'giam_gia_thanh_vien.numeric' => 'Giảm giá thành viên phải là số phần trăm',
+      'giam_gia_thanh_vien.min'     => 'Giảm giá thành viên không được âm',
+      'giam_gia_thanh_vien.max'     => 'Giảm giá thành viên không được lớn hơn 100%',
+
 
       // Thanh toán
       'loai_thanh_toan.required' => 'Loại thanh toán là bắt buộc',

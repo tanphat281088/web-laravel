@@ -22,6 +22,7 @@ class KhachHang extends Model
      */
     protected $casts = [
         'kenh_lien_he' => 'string',
+        'customer_mode'  => 'integer',  // 0 = normal, 1 = pass/CTV
     ];
 
     protected static function boot()

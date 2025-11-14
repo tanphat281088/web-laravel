@@ -11,6 +11,8 @@ use App\Http\Controllers\Api\DashboardController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\DB; // MỚI: dùng cho route loai-san-pham/options
 use App\Modules\KhachHangVangLai\KhachHangVangLaiController; // MỚI: controller KH vãng lai
+use App\Modules\KhachHangPassCtv\KhachHangPassCtvController; // MỚI: Khách hàng Pass đơn & CTV
+
 use App\Modules\SanPham\SanPhamController; // ĐƯA LÊN ĐẦU FILE: tránh lỗi PHP use giữa file
 use App\Modules\ThuChi\BaoCaoThuChiController; // ĐƯA LÊN ĐẦU FILE: tránh lỗi PHP use giữa file
 use App\Modules\GiaoHang\GiaoHangController; // MỚI: controller Quản lý giao hàng
@@ -233,6 +235,24 @@ Route::get('danh-sach-phan-quyen', [\App\Http\Controllers\Api\PermissionRegistry
     Route::get('/', [KhachHangVangLaiController::class, 'index']);
     Route::post('/convert', [KhachHangVangLaiController::class, 'convert']);
   });
+
+    // ====== MỚI: Khách hàng Pass đơn & CTV ======
+  Route::prefix('khach-hang-pass-ctv')->group(function () {
+    // Danh sách khách hàng Pass/CTV
+    Route::get('/', [KhachHangPassCtvController::class, 'index']);
+
+    // Chuyển KH hệ thống thường → Pass/CTV
+    Route::post('/convert-to-pass/{id}', [KhachHangPassCtvController::class, 'convertToPass'])
+         ->whereNumber('id');
+
+    // Chuyển KH Pass/CTV → hệ thống thường
+    Route::post('/convert-to-normal/{id}', [KhachHangPassCtvController::class, 'convertToNormal'])
+         ->whereNumber('id');
+             // Dropdown options cho KH Pass/CTV (chỉ customer_mode = 1)
+    Route::get('/options', [KhachHangPassCtvController::class, 'options']);
+
+  });
+
 
   // NhaCungCap
   Route::prefix('nha-cung-cap')->group(function () {

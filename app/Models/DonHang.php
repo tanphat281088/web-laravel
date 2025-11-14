@@ -44,6 +44,9 @@ class DonHang extends Model
     protected $casts = [
         'nguoi_nhan_thoi_gian' => 'datetime',
         'trang_thai_don_hang'  => 'integer',
+                'member_discount_percent' => 'integer',
+        'member_discount_amount'  => 'integer',
+
     ];
 
     protected static function boot()

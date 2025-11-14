@@ -58,6 +58,9 @@ class UpdateQuanLyBanHangRequest extends FormRequest
       'giam_gia'          => ['sometimes','required','numeric','min:0'],
       'chi_phi'           => ['sometimes','required','numeric','min:0'],
 
+            'giam_gia_thanh_vien' => ['sometimes','nullable','numeric','min:0','max:100'],
+
+
       // ===== Thanh toán =====
       // 0 = Chưa thanh toán, 1 = Thanh toán một phần, 2 = Thanh toán toàn bộ
       'loai_thanh_toan'       => ['sometimes','required','integer', Rule::in([0,1,2])],
@@ -141,6 +144,10 @@ class UpdateQuanLyBanHangRequest extends FormRequest
       'chi_phi.required'           => 'Chi phí là bắt buộc',
       'chi_phi.numeric'            => 'Chi phí phải là số',
       'chi_phi.min'                => 'Chi phí không được âm',
+            'giam_gia_thanh_vien.numeric' => 'Giảm giá thành viên phải là số phần trăm',
+      'giam_gia_thanh_vien.min'     => 'Giảm giá thành viên không được âm',
+      'giam_gia_thanh_vien.max'     => 'Giảm giá thành viên không được lớn hơn 100%',
+
 
       // Thanh toán
       'loai_thanh_toan.required'   => 'Loại thanh toán là bắt buộc',

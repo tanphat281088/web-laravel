@@ -28,6 +28,18 @@ return [
   // Đặc thù: convert vãng lai → khách chuẩn
   ['name' => 'khach-hang-vang-lai',    'actions' => ['showMenu'=>false,'index'=>false,'show'=>false,'create'=>false,'edit'=>false,'delete'=>false,'export'=>false,'convert'=>false]],
 
+  // Khách hàng Pass đơn & CTV
+  ['name' => 'khach-hang-pass-ctv',    'actions' => [
+      'showMenu' => false,   // nếu sau này muốn hiện menu riêng trong Sidebar thì bật true
+      'index'    => false,   // GET /khach-hang-pass-ctv
+      'show'     => false,
+      'create'   => false,
+      'edit'     => false,
+      'delete'   => false,
+      'export'   => false,
+      // Đặc thù: chuyển đổi chế độ
+      'convert'  => false,   // POST /khach-hang-pass-ctv/convert-to-pass|convert-to-normal
+  ]],
 
 
   // ===== SẢN PHẨM / NCC =====

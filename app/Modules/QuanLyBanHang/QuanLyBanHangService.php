@@ -223,24 +223,69 @@ if ($canOverride && $userPrice !== null) {
                 $tongTienHang += (int)$data['danh_sach_san_pham'][$index]['thanh_tien'];
             }
 
-            $giamGia = (int)($data['giam_gia'] ?? 0);
+            // ===== GIẢM GIÁ: THỦ CÔNG + THÀNH VIÊN =====
+            // Giảm giá thủ công (VNĐ)
+            $manualDiscount = (int)($data['giam_gia'] ?? 0);
+
+            // Mặc định không áp dụng giảm giá thành viên
+            $memberPercent = 0.0;
+
+            // Chỉ xét giảm giá thành viên khi:
+            // - Đơn là KH hệ thống (loai_khach_hang = 0)
+            // - Có khach_hang_id
+            $loaiKh = (int)($data['loai_khach_hang'] ?? 0);
+            $khId   = $data['khach_hang_id'] ?? null;
+
+            // Mặc định: khách thường (0)
+            $customerMode = 0;
+            if (!empty($khId)) {
+                $khTmp = \App\Models\KhachHang::find($khId);
+                $customerMode = (int)($khTmp->customer_mode ?? 0);
+            }
+
+            // Chỉ KH hệ thống THƯỜNG (customer_mode = 0) mới được giảm giá thành viên
+            if ($loaiKh === 0 && !empty($khId) && $customerMode === 0) {
+                if (array_key_exists('giam_gia_thanh_vien', $data)
+                    && $data['giam_gia_thanh_vien'] !== null
+                    && $data['giam_gia_thanh_vien'] !== ''
+                ) {
+                    $memberPercent = (float)$data['giam_gia_thanh_vien'];
+                    if ($memberPercent < 0) {
+                        $memberPercent = 0;
+                    } elseif ($memberPercent > 100) {
+                        $memberPercent = 100;
+                    }
+                }
+            } else {
+                // KH vãng lai hoặc KH Pass/CTV → luôn 0%
+                $memberPercent = 0.0;
+            }
+
+            // Tiền giảm giá thành viên = % × tổng tiền hàng
+            $memberAmount = (int) round($tongTienHang * $memberPercent / 100);
+
+
+            // Tổng giảm giá thực tế = thủ công + thành viên
+            $totalDiscount = $manualDiscount + $memberAmount;
+
+            // Chi phí vận chuyển
             $chiPhi  = (int)($data['chi_phi'] ?? 0);
 
             // ===== VAT-AWARE TOTALS (TƯƠNG THÍCH NGƯỢC) =====
             $taxMode = (int)($data['tax_mode'] ?? 0);
             $vatRate = array_key_exists('vat_rate', $data) ? (float)$data['vat_rate'] : null;
 
-            // 1) Subtotal
-            $subtotal = max(0, (int)$tongTienHang - $giamGia + $chiPhi);
+            // 1) Subtotal = Tổng hàng - Giảm (thủ công + thành viên) + Chi phí
+            $subtotal = max(0, (int)$tongTienHang - $totalDiscount + $chiPhi);
 
             // 2) VAT
             if ($taxMode === 1 && $vatRate !== null) {
                 $vatAmount  = (int) round($subtotal * $vatRate / 100, 0);
                 $grandTotal = $subtotal + $vatAmount;
             } else {
-                $taxMode   = 0;
-                $vatRate   = null;
-                $vatAmount = null;
+                $taxMode    = 0;
+                $vatRate    = null;
+                $vatAmount  = null;
                 $grandTotal = $subtotal;
             }
 
@@ -256,6 +301,12 @@ if ($canOverride && $userPrice !== null) {
             $data['subtotal']   = ($taxMode === 1) ? (int)$subtotal : null;
             $data['vat_amount'] = ($taxMode === 1) ? (int)$vatAmount : null;
             $data['grand_total']= ($taxMode === 1) ? (int)$grandTotal : null;
+
+            // 🔹 Lưu snapshot giảm giá thành viên xuống DB
+            $data['member_discount_percent'] = (int)$memberPercent;
+            $data['member_discount_amount']  = $memberAmount;
+            // (giam_gia_thanh_vien là field FE gửi, DB không có cột nên không cần xoá)
+
 
             // ✅ Chuẩn hoá thông tin người nhận (Tên/SĐT/Ngày giờ nhận)
             $this->normalizeRecipientFields($data);
@@ -290,7 +341,8 @@ if ($canOverride && $userPrice !== null) {
             unset(
                 $dataDonHang['danh_sach_san_pham'],
                 $dataDonHang['so_tien_con_lai'],
-                $dataDonHang['ma_don_hang']
+                $dataDonHang['ma_don_hang'],
+                 $dataDonHang['giam_gia_thanh_vien'] 
             );
 
             $donHang = DonHang::create($dataDonHang);
@@ -472,24 +524,92 @@ if ($canOverride && $userPrice !== null) {
                     $tongTienHang += (int)$data['danh_sach_san_pham'][$index]['thanh_tien'];
                 }
 
-                $giamGia = (int)($data['giam_gia'] ?? 0);
-                $chiPhi  = (int)($data['chi_phi'] ?? 0);
+                 // ===== GIẢM GIÁ: THỦ CÔNG + THÀNH VIÊN (UPDATE) =====
+                // Lấy giảm giá thủ công: nếu payload có thì dùng, không thì giữ theo DB
+                $manualDiscount = array_key_exists('giam_gia', $data)
+                    ? (int)$data['giam_gia']
+                    : (int)($donHang->giam_gia ?? 0);
+
+                // Lấy chi phí: nếu payload có thì dùng, không thì giữ theo DB
+                $chiPhi = array_key_exists('chi_phi', $data)
+                    ? (int)$data['chi_phi']
+                    : (int)($donHang->chi_phi ?? 0);
+
+                // Xác định loại KH & id KH hiện tại (ưu tiên payload, fallback DB)
+                $loaiKh = array_key_exists('loai_khach_hang', $data)
+                    ? (int)$data['loai_khach_hang']
+                    : (int)($donHang->loai_khach_hang ?? 0);
+
+                $khId = array_key_exists('khach_hang_id', $data)
+                    ? $data['khach_hang_id']
+                    : $donHang->khach_hang_id;
+
+                // Mặc định không áp dụng giảm giá thành viên
+                $memberPercent = 0.0;
+
+                // Mặc định: khách thường (0)
+                $customerMode = 0;
+                if (!empty($khId)) {
+                    // Nếu vẫn là cùng KH với đơn hiện tại và đã load quan hệ, tận dụng cho nhanh
+                    if ($donHang->khach_hang_id == $khId && $donHang->relationLoaded('khachHang')) {
+                        $customerMode = (int)($donHang->khachHang->customer_mode ?? 0);
+                    } else {
+                        $khTmp = \App\Models\KhachHang::find($khId);
+                        $customerMode = (int)($khTmp->customer_mode ?? 0);
+                    }
+                }
+
+                // Chỉ KH hệ thống THƯỜNG (customer_mode = 0) mới được giảm giá thành viên
+                if ($loaiKh === 0 && !empty($khId) && $customerMode === 0) {
+                    if (array_key_exists('giam_gia_thanh_vien', $data)
+                        && $data['giam_gia_thanh_vien'] !== null
+                        && $data['giam_gia_thanh_vien'] !== ''
+                    ) {
+                        // Payload có gửi % mới
+                        $memberPercent = (float)$data['giam_gia_thanh_vien'];
+                    } else {
+                        // Không gửi mới → giữ theo DB
+                        $memberPercent = (float)($donHang->member_discount_percent ?? 0);
+                    }
+
+                    if ($memberPercent < 0) {
+                        $memberPercent = 0;
+                    } elseif ($memberPercent > 100) {
+                        $memberPercent = 100;
+                    }
+                } else {
+                    // KH vãng lai hoặc KH Pass/CTV → luôn 0% (đồng thời xoá discount cũ nếu có)
+                    $memberPercent = 0.0;
+                }
+
+                // Tiền giảm giá thành viên = % × tổng tiền hàng
+                $memberAmount = (int) round($tongTienHang * $memberPercent / 100);
+
+
+                // Tổng giảm giá thực tế = thủ công + thành viên
+                $totalDiscount = $manualDiscount + $memberAmount;
 
                 // ===== VAT-AWARE TOTALS (TƯƠNG THÍCH NGƯỢC) =====
-                $taxMode = (int)($data['tax_mode'] ?? 0);
-                $vatRate = array_key_exists('vat_rate', $data) ? (float)$data['vat_rate'] : null;
+                // Thuế: nếu payload có thì dùng, không thì lấy theo DB
+                $taxMode = array_key_exists('tax_mode', $data)
+                    ? (int)$data['tax_mode']
+                    : (int)($donHang->tax_mode ?? 0);
 
-                // 1) Subtotal
-                $subtotal = max(0, (int)$tongTienHang - $giamGia + $chiPhi);
+                $vatRate = array_key_exists('vat_rate', $data)
+                    ? (float)$data['vat_rate']
+                    : ($donHang->vat_rate !== null ? (float)$donHang->vat_rate : null);
+
+                // 1) Subtotal = Tổng hàng - Giảm (thủ công + thành viên) + Chi phí
+                $subtotal = max(0, (int)$tongTienHang - $totalDiscount + $chiPhi);
 
                 // 2) VAT
                 if ($taxMode === 1 && $vatRate !== null) {
                     $vatAmount  = (int) round($subtotal * $vatRate / 100, 0);
                     $grandTotal = $subtotal + $vatAmount;
                 } else {
-                    $taxMode   = 0;
-                    $vatRate   = null;
-                    $vatAmount = null;
+                    $taxMode    = 0;
+                    $vatRate    = null;
+                    $vatAmount  = null;
                     $grandTotal = $subtotal;
                 }
 
@@ -500,9 +620,11 @@ if ($canOverride && $userPrice !== null) {
                 $this->normalizePayments($data, $tongTienCanThanhToan);
 
                 // Tổng hợp trường tổng
-                $data['tong_tien_hang']             = (int)$tongTienHang;
-                $data['tong_tien_can_thanh_toan']   = (int)$tongTienCanThanhToan;
-                $data['tong_so_luong_san_pham']     = isset($data['danh_sach_san_pham']) ? count($data['danh_sach_san_pham']) : $donHang->tong_so_luong_san_pham;
+                $data['tong_tien_hang']           = (int)$tongTienHang;
+                $data['tong_tien_can_thanh_toan'] = (int)$tongTienCanThanhToan;
+                $data['tong_so_luong_san_pham']   = isset($data['danh_sach_san_pham'])
+                    ? count($data['danh_sach_san_pham'])
+                    : $donHang->tong_so_luong_san_pham;
 
                 // 4) Ghi vào $data cho DonHang (NULL khi không thuế để không phá report cũ)
                 $data['tax_mode']   = $taxMode;
@@ -510,6 +632,11 @@ if ($canOverride && $userPrice !== null) {
                 $data['subtotal']   = ($taxMode === 1) ? (int)$subtotal : null;
                 $data['vat_amount'] = ($taxMode === 1) ? (int)$vatAmount : null;
                 $data['grand_total']= ($taxMode === 1) ? (int)$grandTotal : null;
+
+                // 🔹 Lưu snapshot giảm giá thành viên xuống DB
+                $data['member_discount_percent'] = (int)$memberPercent;
+                $data['member_discount_amount']  = $memberAmount;
+
 
             } else {
                 // KHÔNG tái tính tiền hàng khi không được phép chỉnh tiền/hàng
@@ -549,7 +676,8 @@ if ($canOverride && $userPrice !== null) {
             unset(
                 $dataDonHang['danh_sach_san_pham'],
                 $dataDonHang['so_tien_con_lai'],
-                $dataDonHang['ma_don_hang']
+                $dataDonHang['ma_don_hang'],
+                $dataDonHang['giam_gia_thanh_vien']
             );
 
             $donHang->update($dataDonHang);

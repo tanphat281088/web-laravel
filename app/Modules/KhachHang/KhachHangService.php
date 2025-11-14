@@ -16,7 +16,8 @@ class KhachHangService
     public function getAll(array $params = [])
     {
         try {
-            $query = KhachHang::query()->with('images', 'loaiKhachHang:id,ten_loai_khach_hang');
+           $query = KhachHang::query()->with('images', 'loaiKhachHang:id,ten_loai_khach_hang,gia_tri_uu_dai');
+
 
             $result = FilterWithPagination::findWithPagination(
                 $query,
@@ -45,7 +46,8 @@ class KhachHangService
      */
     public function getById($id)
     {
-        $data = KhachHang::with('images')->find($id);
+                $data = KhachHang::with('images', 'loaiKhachHang')->find($id);
+
         if (!$data) {
             return CustomResponse::error('Dữ liệu không tồn tại');
         }

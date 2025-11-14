@@ -161,6 +161,14 @@
       <div class="invoice-title">THÔNG TIN ĐƠN HÀNG</div>
     </div>
 
+    @php
+      // 0 = KH hệ thống, 1 = KH vãng lai
+      $isSystemCustomer = (int)($donHang->loai_khach_hang ?? 0) === 0;
+    @endphp
+
+
+
+
     <!-- INFO: 3 CỘT NGANG -->
     <div class="invoice-info">
       <!-- Cột 1: ĐƠN HÀNG -->
@@ -193,6 +201,15 @@
       <div class="info-col">
         <h3>Thông tin khách hàng</h3>
         <div class="detail-row"><span class="label">Tên KH:</span><span class="value">{{ $donHang->ten_khach_hang ?? 'Khách lẻ' }}</span></div>
+                @if ($isSystemCustomer)
+          <div class="detail-row">
+            <span class="label">Loại khách hàng:</span>
+            <span class="value">
+              {{ optional(optional($donHang->khachHang)->loaiKhachHang)->ten_loai_khach_hang ?? 'Khách hàng hệ thống' }}
+            </span>
+          </div>
+        @endif
+
         <div class="detail-row"><span class="label">SĐT:</span><span class="value">{{ $donHang->so_dien_thoai ?? 'N/A' }}</span></div>
         <div class="detail-row"><span class="label">Địa chỉ giao:</span><span class="value">{{ $donHang->dia_chi_giao_hang ?? 'N/A' }}</span></div>
         <div class="detail-row"><span class="label">Ghi chú:</span><span class="value">{{ $donHang->ghi_chu ?? 'Không có' }}</span></div>
@@ -259,12 +276,23 @@
       $giamGia   = (int)($donHang->giam_gia ?? 0);
       $chiPhi    = (int)($donHang->chi_phi ?? 0);
 
+      // Giảm giá thành viên (snapshot từ đơn)
+      $memberPercent = (int)($donHang->member_discount_percent ?? 0);
+      $memberAmount  = (int)($donHang->member_discount_amount ?? 0);
+
       // ====== Thuế (tương thích ngược) ======
       $taxMode   = (int)($donHang->tax_mode ?? 0);
       $vatRate   = (float)($donHang->vat_rate ?? 0);
 
-      // Subtotal = tổng hàng - giảm giá + chi phí
-      $subtotal  = max(0, (int)($donHang->subtotal ?? ($tongHang - $giamGia + $chiPhi)));
+      // Subtotal = tổng hàng - giảm thủ công - giảm thành viên + chi phí
+      $subtotal  = max(
+        0,
+        (int)(
+          $donHang->subtotal
+          ?? ($tongHang - $giamGia - $memberAmount + $chiPhi)
+        )
+      );
+
 
       // VAT & Grand total chỉ khi tax_mode=1; nếu thiếu dữ liệu, tự suy diễn an toàn
       if ($taxMode === 1) {
@@ -284,6 +312,14 @@
     <div class="total-section">
       <div class="total-row"><span>Tổng tiền hàng:</span><span>{{ number_format($tongHang, 0, ',', '.') }}đ</span></div>
       <div class="total-row"><span>Giảm giá:</span><span>-{{ number_format($giamGia, 0, ',', '.') }}đ</span></div>
+
+            @if ($isSystemCustomer && $memberAmount > 0)
+        <div class="total-row">
+          <span>Giảm giá thành viên ({{ $memberPercent }}%):</span>
+          <span>-{{ number_format($memberAmount, 0, ',', '.') }}đ</span>
+        </div>
+      @endif
+
       <div class="total-row"><span>Chi phí khác:</span><span>{{ number_format($chiPhi, 0, ',', '.') }}đ</span></div>
 
       @if ($taxMode === 1)
