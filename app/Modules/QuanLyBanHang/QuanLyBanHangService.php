@@ -57,15 +57,30 @@ class QuanLyBanHangService
     /**
      * Lấy dữ liệu theo ID
      */
-    public function getById($id)
-    {
-        $data = DonHang::with('khachHang', 'chiTietDonHangs.sanPham', 'chiTietDonHangs.donViTinh')->find($id);
-        if (!$data) {
-            return CustomResponse::error('Dữ liệu không tồn tại');
-        }
-
-        return $data;
+public function getById($id)
+{
+    $data = DonHang::with('khachHang', 'chiTietDonHangs.sanPham', 'chiTietDonHangs.donViTinh')->find($id);
+    if (!$data) {
+        return CustomResponse::error('Dữ liệu không tồn tại');
     }
+
+    // 🔹 Gắn sẵn chuỗi hiển thị Khách hàng cho FE: "Mã KH - Tên KH - SĐT"
+    if ($data->relationLoaded('khachHang') && $data->khachHang) {
+        $kh = $data->khachHang;
+        $code  = $kh->ma_kh ?? '';
+        $name  = $kh->ten_khach_hang ?? '';
+        $phone = $kh->so_dien_thoai ?? '';
+        $label = trim(implode(' - ', array_filter([$code, $name, $phone])));
+
+        if ($label !== '') {
+            // setAttribute để nó xuất hiện trong JSON
+            $data->setAttribute('khach_hang_display', $label);
+        }
+    }
+
+    return $data;
+}
+
 
     /**
      * Chuẩn hoá thanh toán theo loại thanh toán (an toàn dữ liệu)
