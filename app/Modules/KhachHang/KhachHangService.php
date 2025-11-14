@@ -117,29 +117,29 @@ class KhachHangService
     /**
      * Lấy danh sách option hiển thị cả mã KH
      */
-public function getOptions(array $params = [])
-{
-    // nhận keyword từ nhiều khóa để tương thích FE
-    $kw    = trim($params['keyword'] ?? $params['q'] ?? $params['search'] ?? $params['term'] ?? '');
-    $limit = (int)($params['limit'] ?? 30);
+    public function getOptions(array $params = [])
+    {
+        // nhận keyword từ nhiều khóa để tương thích FE
+        $kw    = trim($params['keyword'] ?? $params['q'] ?? $params['search'] ?? $params['term'] ?? '');
+        $limit = (int)($params['limit'] ?? 30);
 
-    $query = KhachHang::query()
-        ->select(
-            'id as value',
-            DB::raw('CONCAT(ma_kh, " - ", ten_khach_hang, " - ", COALESCE(so_dien_thoai, "")) as label')
-        )
-        ->orderBy('ma_kh');
+        $query = KhachHang::query()
+            ->select(
+                'id as value',
+                DB::raw('CONCAT(ma_kh, " - ", ten_khach_hang, " - ", COALESCE(so_dien_thoai, "")) as label')
+            )
+            ->orderBy('ma_kh');
 
-    if ($kw !== '') {
-        $query->where(function ($q) use ($kw) {
-            $q->where('ma_kh', 'like', "%{$kw}%")
-              ->orWhere('ten_khach_hang', 'like', "%{$kw}%")
-              ->orWhere('so_dien_thoai', 'like', "%{$kw}%");
-        });
+        if ($kw !== '') {
+            $query->where(function ($q) use ($kw) {
+                $q->where('ma_kh', 'like', "%{$kw}%")
+                  ->orWhere('ten_khach_hang', 'like', "%{$kw}%")
+                  ->orWhere('so_dien_thoai', 'like', "%{$kw}%");
+            });
+        }
+
+        return $query->limit($limit)->get();
     }
-
-    return $query->limit($limit)->get();
-}
 
     /**
      * Sinh mã KH theo đúng pattern 'KH' + 5 số:
