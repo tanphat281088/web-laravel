@@ -250,6 +250,11 @@ class GiaoHangController extends BaseController
      * Đổi trạng thái (1=Đang giao | 2=Đã giao), đồng thời GỬI SMS 1 LẦN/MỐC.
      * Nếu SMS thất bại → vẫn đổi trạng thái, trả sms_success=false để FE cảnh báo.
      */
+        /**
+     * POST /api/giao-hang/{id}/notify-and-set-status
+     * Đổi trạng thái (1=Đang giao | 2=Đã giao), đồng thời GỬI SMS 1 LẦN/MỐC.
+     * Nếu SMS thất bại → vẫn đổi trạng thái, trả sms_success=false để FE cảnh báo.
+     */
     public function notifyAndSetStatus(Request $request, $id)
     {
         $data = $request->validate([
@@ -258,17 +263,18 @@ class GiaoHangController extends BaseController
             'force_retry'   => ['sometimes', 'boolean'],
         ]);
 
-        $targetStatus = (int) $data['target_status'];
+        $targetStatus = (int) $data['target_status'];          // 1=Đang giao, 2=Đã giao
         $forceRetry   = (bool) ($data['force_retry'] ?? false);
 
+        /** @var DonHang $donHang */
         $donHang = DonHang::findOrFail($id);
 
         // 1) Luôn đổi trạng thái theo yêu cầu
         $donHang->trang_thai_don_hang = $targetStatus;
         $donHang->save();
 
-        // 2) Mốc SMS
-        $smsType = $this->statusToSmsType($targetStatus); // 'dang_giao' | 'da_giao' | null
+        // 2) Mốc SMS (dang_giao | da_giao | null)
+        $smsType = $this->statusToSmsType($targetStatus);
         if ($smsType === null) {
             return CustomResponse::success([
                 'ok'                => true,
@@ -282,7 +288,7 @@ class GiaoHangController extends BaseController
             ], 'Cập nhật trạng thái thành công (không áp dụng SMS cho mốc này).');
         }
 
-        // 3) Chống gửi trùng
+        // 3) Chống gửi trùng theo từng mốc
         $log = DB::table('don_hang_sms_logs')
             ->where('don_hang_id', $donHang->id)
             ->where('type', $smsType)
@@ -293,8 +299,9 @@ class GiaoHangController extends BaseController
             $canRetry = false;
 
             if ((int) $log->success === 0) {
+                // Cho phép retry nếu có quyền
                 $canRetry = Gate::check('giao-hang.sms-retry')
-                    || (method_exists(auth()->user(), 'isAdmin') && auth()->user()->isAdmin());
+                    || (auth()->check() && method_exists(auth()->user(), 'isAdmin') && auth()->user()->isAdmin());
 
                 if (!($forceRetry && $canRetry)) {
                     return CustomResponse::success([
@@ -302,11 +309,11 @@ class GiaoHangController extends BaseController
                         'order_id'          => $donHang->id,
                         'new_status'        => $targetStatus,
                         'sms_attempted'     => false,
-                        'sms_success'       => (bool) $log->success,
+                        'sms_success'       => false,
                         'already_attempted' => true,
                         'can_retry'         => $canRetry,
                         'sms_flags'         => $this->buildSmsFlags($donHang->id),
-                    ], 'Đã cập nhật trạng thái. SMS trước đó đã được thử và thất bại; không gửi lại.');
+                    ], 'Đã cập nhật trạng thái. SMS mốc này trước đó đã gửi/lỗi; không gửi lại.');
                 }
                 // nếu force_retry & có quyền → cho phép gửi lại (update log)
             } else {
@@ -327,15 +334,41 @@ class GiaoHangController extends BaseController
             $canRetry = false;
         }
 
-        // 4) Chuẩn bị nội dung SMS
-        $phone = $donHang->nguoi_nhan_sdt ?: $donHang->so_dien_thoai ?? null;
+        // 4) CHỌN SỐ ĐIỆN THOẠI THEO TRẠNG THÁI
+
+        // Lấy SĐT khách hàng từ bảng khach_hangs (master)
+        $customerPhone = null;
+        if (!empty($donHang->khach_hang_id)) {
+            $customerPhone = DB::table('khach_hangs')
+                ->where('id', $donHang->khach_hang_id)
+                ->value('so_dien_thoai');
+        }
+
+        // Fallback (nếu sau này anh có cột so_dien_thoai trên don_hangs)
+        if (!$customerPhone && !empty($donHang->so_dien_thoai)) {
+            $customerPhone = $donHang->so_dien_thoai;
+        }
+
+        // target_status = 1 → ưu tiên NGƯỜI NHẬN, thiếu mới về KHÁCH HÀNG
+        // target_status = 2 → ưu tiên KHÁCH HÀNG, thiếu mới về NGƯỜI NHẬN
+        if ($targetStatus === 1) {
+            $phone = $donHang->nguoi_nhan_sdt ?: $customerPhone;
+        } elseif ($targetStatus === 2) {
+            $phone = $customerPhone ?: $donHang->nguoi_nhan_sdt;
+        } else {
+            $phone = $donHang->nguoi_nhan_sdt ?: $customerPhone;
+        }
+
         if (!$phone) {
+            // Không có số để gửi → vẫn đổi trạng thái, log NO_PHONE
+            $msgText = $data['message'] ?: $this->defaultSmsMessage($smsType);
+
             $this->upsertSmsLog($donHang->id, $smsType, [
                 'phone'           => null,
-                'message'         => $data['message'] ?: $this->defaultSmsMessage($smsType),
+                'message'         => $msgText,
                 'success'         => 0,
                 'error_code'      => 'NO_PHONE',
-                'error_message'   => 'Không có số điện thoại người nhận',
+                'error_message'   => 'Không tìm thấy số điện thoại phù hợp để gửi SMS',
                 'provider_msg_id' => null,
             ]);
 
@@ -348,29 +381,32 @@ class GiaoHangController extends BaseController
                 'already_attempted' => $alreadyAttempted,
                 'can_retry'         => true,
                 'sms_flags'         => $this->buildSmsFlags($donHang->id),
-            ], 'Đã cập nhật trạng thái nhưng không thể gửi SMS (thiếu số điện thoại).');
+            ], 'Đã cập nhật trạng thái nhưng không thể gửi SMS do không có số điện thoại.');
         }
 
-        $message = $data['message'] ?: $this->defaultSmsMessage($smsType);
+        // Nội dung SMS: ưu tiên message FE gửi lên, thiếu thì dùng default theo mốc
+        $messageText = $data['message'] ?: $this->defaultSmsMessage($smsType);
 
         // 5) Gửi SMS
         try {
             $service = app(\App\Services\Sms\PaVnSmsService::class);
             $result  = $service->send(
                 $phone,
-                $message,
+                $messageText,
                 'PHG Don ' . ($donHang->ma_don_hang ?? $donHang->id),
                 '' // rỗng = gửi ngay; muốn hẹn giờ thì truyền "dd-mm-YYYY HH:ii"
             );
 
-            // ghi/ cập nhật log; nếu blacklist → coi như thất bại để FE cảnh báo
+            // Ghi / cập nhật log; nếu blacklist → coi như thất bại để FE cảnh báo
             $this->upsertSmsLog($donHang->id, $smsType, [
                 'phone'           => $phone,
-                'message'         => $message,
+                'message'         => $messageText,
                 'success'         => (!empty($result->blacklisted) ? 0 : ($result->success ? 1 : 0)),
                 'provider_msg_id' => $result->provider_id ?? null,
                 'error_code'      => !empty($result->blacklisted) ? 'BLACKLISTED' : ($result->error_code ?? null),
-                'error_message'   => !empty($result->blacklisted) ? 'Số thuộc danh sách từ chối (blacklist)' : ($result->error_message ?? null),
+                'error_message'   => !empty($result->blacklisted)
+                    ? 'Số thuộc danh sách từ chối (blacklist)'
+                    : ($result->error_message ?? null),
             ]);
 
             $smsSuccess = empty($result->blacklisted) && !empty($result->success);
@@ -382,17 +418,17 @@ class GiaoHangController extends BaseController
                 'sms_attempted'     => true,
                 'sms_success'       => $smsSuccess,
                 'already_attempted' => $alreadyAttempted,
-                'can_retry'         => !$smsSuccess, // cho retry khi thất bại (nếu có quyền)
+                'can_retry'         => !$smsSuccess,
                 'sms_flags'         => $this->buildSmsFlags($donHang->id),
             ], $smsSuccess
                 ? 'Đã cập nhật trạng thái và gửi SMS thành công.'
                 : 'Đã cập nhật trạng thái nhưng SMS chưa gửi được (có thể do blacklist hoặc lỗi nhà cung cấp).');
 
         } catch (\Throwable $e) {
-            // lỗi runtime: vẫn đổi trạng thái, ghi log fail
+            // Lỗi runtime: vẫn đổi trạng thái, ghi log fail
             $this->upsertSmsLog($donHang->id, $smsType, [
                 'phone'           => $phone,
-                'message'         => $message,
+                'message'         => $messageText,
                 'success'         => 0,
                 'provider_msg_id' => null,
                 'error_code'      => 'EXCEPTION',
@@ -412,7 +448,8 @@ class GiaoHangController extends BaseController
                 'sms_flags'         => $this->buildSmsFlags($donHang->id),
             ], 'Đã cập nhật trạng thái nhưng gửi SMS thất bại.');
         }
-    }   // <= END notifyAndSetStatus()
+    } // <= END notifyAndSetStatus()
+
 
     // -----------------------
     // Helpers nội bộ
