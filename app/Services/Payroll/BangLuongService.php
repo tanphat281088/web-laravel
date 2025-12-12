@@ -112,6 +112,22 @@ class BangLuongService
         // ⚠️ so_gio_cong đang lưu PHÚT (không phải giờ)
         $soGioCong  = $bc ? max(0, (int) $bc->so_gio_cong) : 0;
 
+                // 3.1) Phụ cấp cố định + tiền cơm theo hồ sơ lương và ngày công
+        //  - allowFixed: phụ cấp cố định theo THÁNG (phụ cấp hồ sơ + hỗ trợ + điện thoại + cơm cố định)
+        //  - mealAmount: tiền cơm theo NGÀY công (meal_per_day * số ngày công)
+        $allowFixed = (int) (
+            $cfg['phu_cap_def']
+            + $cfg['support_allowance']
+            + $cfg['phone_allowance']
+            + $cfg['meal_extra_default']
+        );
+
+        $mealAmount = (int) (($cfg['meal_per_day'] ?? 0) * (int) $soNgayCong);
+
+        // Tổng phụ cấp tự động sẽ được đưa vào snapshot (phu_cap)
+        $autoAllowance = $allowFixed + $mealAmount;
+
+
         // 4) Tính toán lương & BH
 
         // Base lương = MLCB * hệ số
@@ -209,7 +225,11 @@ class BangLuongService
             $otMinutes,
             $unitBasePerMin,
             $otRatePerMin,
-            $otAmount
+            $otAmount,
+            $allowFixed,
+            $mealAmount,
+            $autoAllowance
+
         ) {
             /** @var LuongThang|null $row */
             $row = LuongThang::query()
@@ -223,20 +243,22 @@ class BangLuongService
                 return;
             }
 
-            // Nếu chưa có, tạo mới với mặc định phụ cấp từ profile
+            // Nếu chưa có, tạo mới skeleton (không set phu_cap ở đây nữa)
             if (!$row) {
                 $row = new LuongThang();
                 $row->user_id  = $userId;
                 $row->thang    = $thang;
-
-                // Phụ cấp mặc định (KHÔNG cộng meal theo ngày để tránh ghi đè thủ công):
-                $row->phu_cap  = (int) ($cfg['phu_cap_def'] + $cfg['support_allowance'] + $cfg['phone_allowance'] + $cfg['meal_extra_default']);
 
                 $row->thuong   = 0;
                 $row->phat     = 0;
                 $row->tam_ung  = 0;
                 $row->khau_tru_khac = 0;
             }
+
+            // Với dòng CHƯA khoá: luôn refresh phụ cấp tự động từ hồ sơ lương + ngày công
+            // (Nếu sau này anh muốn cộng thêm chỉnh tay, có thể tăng trực tiếp trên phu_cap trong UI rồi khoá tháng)
+            $row->phu_cap = (int) $autoAllowance;
+
 
             // Cập nhật snapshot cơ bản
             $row->luong_co_ban    = (int) $cfg['luong_co_ban'];
@@ -260,6 +282,11 @@ class BangLuongService
                 'cong_chuan'  => $congChuanEff,
                 'prorate'     => $prorateDay,
                 'bh_base'     => $bhBase,
+
+  // Phụ cấp & cơm (theo hồ sơ)
+                'allow_fixed' => $allowFixed,
+                'meal_amount' => $mealAmount,
+
 
                 // Thông tin mới theo PHÚT công
                 'std_minutes'      => $stdMinutes,
